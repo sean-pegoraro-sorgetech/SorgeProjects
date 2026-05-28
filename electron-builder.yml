@@ -1,0 +1,14 @@
+appId: com.sorgetech.projectstepmanager
+productName: Project Step Manager
+directories:
+  output: release
+win:
+  target: nsis
+  signAndEditExecutable: false
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+files:
+  - dist/**/*
+  - node_modules/**/*
+  - package.json
