@@ -698,6 +698,17 @@ h2 {
   padding: 7px 8px;
 }
 
+.task-table .estimate-col {
+  width: 84px;
+  min-width: 84px;
+  max-width: 84px;
+}
+
+.task-table th.estimate-col {
+  white-space: normal;
+  line-height: 1.15;
+}
+
 .task-table textarea {
   resize: vertical;
   min-height: 34px;

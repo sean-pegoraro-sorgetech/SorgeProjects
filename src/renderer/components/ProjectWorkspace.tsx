@@ -424,9 +424,9 @@ export default function ProjectWorkspace() {
                     <th>Ambito</th>
                     <th>Task</th>
                     <th>Backend</th>
-                    <th>Stima</th>
+                    <th className="estimate-col">Stima (gg)</th>
                     <th>Frontend</th>
-                    <th>Stima</th>
+                    <th className="estimate-col">Stima (gg)</th>
                     <th>Stato</th>
                     <th>Nota 1</th>
                     <th></th>
@@ -450,7 +450,7 @@ export default function ProjectWorkspace() {
                           {selected.statuses.map((status) => <option key={status.value} value={status.name}>{status.name}</option>)}
                         </select>
                       </td>
-                      <td>
+                      <td className="estimate-col">
                         <input
                           className="number-input"
                           value={task.backendEstimateDays ?? ''}
@@ -466,7 +466,7 @@ export default function ProjectWorkspace() {
                           {selected.statuses.map((status) => <option key={status.value} value={status.name}>{status.name}</option>)}
                         </select>
                       </td>
-                      <td>
+                      <td className="estimate-col">
                         <input
                           className="number-input"
                           value={task.frontendEstimateDays ?? ''}
