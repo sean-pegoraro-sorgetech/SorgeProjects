@@ -45,6 +45,8 @@ export interface StatusOption {
 
 export interface ProjectTask {
   id: string;
+  parentId?: string | null;
+  level?: number;
   rowNumber?: number;
   phase?: string;
   area: string;

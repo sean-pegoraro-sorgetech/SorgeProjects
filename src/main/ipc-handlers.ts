@@ -20,6 +20,28 @@ import {
 import { getAzureConfig, getSettings, setAzureConfig, setSettings } from './store/settings-store';
 import type { NewProjectInput, ProjectFile, ProjectFolder, ProjectSaveInput } from '../renderer/types/project';
 
+function removeWorkbookExtension(name: string): string {
+  return name.replace(/\.xlsx$/i, '').trim();
+}
+
+function folderBaseName(folderName: string, prefix: string): string {
+  if (!prefix) return folderName;
+  return folderName.toLowerCase().startsWith(prefix.toLowerCase())
+    ? folderName.slice(prefix.length)
+    : folderName;
+}
+
+function workbookNameForFolder(folderName: string, rawWorkbookName: string, prefix: string): string {
+  const baseFolder = sanitizeFolderName(folderBaseName(folderName, prefix));
+  const baseWorkbook = removeWorkbookExtension(rawWorkbookName);
+  const normalizedWorkbook = baseWorkbook.toLowerCase();
+  const normalizedPrefix = `${baseFolder}_`.toLowerCase();
+  const joined = normalizedWorkbook.startsWith(normalizedPrefix)
+    ? baseWorkbook
+    : `${baseFolder}_${baseWorkbook}`;
+  return sanitizeWorkbookName(joined);
+}
+
 async function ensureMsalFromSettings(): Promise<void> {
   const azure = getAzureConfig();
   await initMsal(azure.clientId, azure.tenantId);
@@ -65,7 +87,7 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('projects:create', async (_event, input: NewProjectInput) => {
     const settings = getSettings();
     const folderName = sanitizeFolderName(`${settings.defaults.projectNamePrefix}${input.name}`);
-    const filename = sanitizeWorkbookName('Piano lavori');
+    const filename = workbookNameForFolder(folderName, 'Piano lavori', settings.defaults.projectNamePrefix);
     const existing = await listProjectFolders(settings.sharepoint);
     if (existing.some((folder) => folder.name.toLowerCase() === folderName.toLowerCase())) {
       throw new Error(`Esiste gia una cartella progetto chiamata ${folderName}.`);
@@ -97,7 +119,7 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('projects:createWorkbook', async (_event, input: { folderName: string; folderPath: string; fileName: string; tasks?: any[] }) => {
     const settings = getSettings();
-    const filename = sanitizeWorkbookName(input.fileName);
+    const filename = workbookNameForFolder(input.folderName, input.fileName, settings.defaults.projectNamePrefix);
     const folders = await listProjectFolders(settings.sharepoint);
     const folder = folders.find((item) => item.path === input.folderPath);
     if (!folder) throw new Error(`Cartella progetto non trovata: ${input.folderName}`);

@@ -6,7 +6,7 @@ import type {
   StatusOption,
   WorkbookFormat,
 } from '../../renderer/types/project';
-import { computeOverallStatus, normalizeStatusName } from '../../shared/status';
+import { aggregateStatuses, computeOverallStatus, normalizeStatusName } from '../../shared/status';
 
 export const DEFAULT_STATUSES: StatusOption[] = [
   { value: 0, name: 'Non iniziato' },
@@ -109,8 +109,13 @@ function parsePianoSheet(sheet: ExcelJS.Worksheet): ProjectTask[] {
 
     const backendStatus = normalizeStatus(row.getCell(3).value);
     const frontendStatus = normalizeStatus(row.getCell(5).value);
+    const taskId = cellText(row.getCell(14).value) || `row-${rowNumber}`;
+    const parentId = cellText(row.getCell(15).value) || null;
+    const level = cellNumber(row.getCell(16).value) ?? (parentId ? 1 : 0);
     tasks.push({
-      id: `row-${rowNumber}`,
+      id: taskId,
+      parentId,
+      level,
       rowNumber,
       area,
       task,
@@ -147,6 +152,8 @@ function parseLegacySheet(sheet: ExcelJS.Worksheet): ProjectTask[] {
     const frontendStatus = normalizeStatus(row.getCell(5).value);
     tasks.push({
       id: `row-${rowNumber}`,
+      parentId: null,
+      level: 0,
       rowNumber,
       phase: currentPhase,
       area: currentArea || area || '-',
@@ -209,6 +216,9 @@ function styleHeader(sheet: ExcelJS.Worksheet): void {
     { key: 'backendValue', width: 14, hidden: true },
     { key: 'frontendValue', width: 14, hidden: true },
     { key: 'statusValue', width: 14, hidden: true },
+    { key: 'taskId', width: 18, hidden: true },
+    { key: 'parentId', width: 18, hidden: true },
+    { key: 'level', width: 10, hidden: true },
   ];
 
   safeMerge(sheet, 'A1:J1');
@@ -283,16 +293,20 @@ function writePianoRows(
     'Backend valore',
     'Frontend valore',
     'Stato valore',
+    'Task ID',
+    'Parent ID',
+    'Livello',
   ];
 
   styleHeader(sheet);
 
   const totalRows = Math.max(initialRows, tasks.length || 1);
   const statusNames = statuses.map((status) => status.name).join(',');
+  const rolledTasks = rollupParentTasks(tasks);
 
   for (let index = 0; index < totalRows; index += 1) {
     const rowNumber = index + 5;
-    const task = tasks[index];
+    const task = rolledTasks[index];
     const row = sheet.getRow(rowNumber);
     const backendEstimate = task?.backendEstimateDays ?? null;
     const frontendEstimate = task?.frontendEstimateDays ?? null;
@@ -317,6 +331,9 @@ function writePianoRows(
       task ? statusValue(backendStatus, statuses) : null,
       task ? statusValue(frontendStatus, statuses) : null,
       task ? statusValue(overallStatus, statuses) : null,
+      task?.id || null,
+      task?.parentId || null,
+      task?.level || (task?.parentId ? 1 : 0),
     ];
 
     [3, 5].forEach((col) => {
@@ -328,13 +345,47 @@ function writePianoRows(
     });
 
     row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-      cell.alignment = { vertical: 'top', wrapText: colNumber === 2 || colNumber === 9 || colNumber === 10 };
+      cell.alignment = {
+        vertical: 'top',
+        wrapText: colNumber === 2 || colNumber === 9 || colNumber === 10,
+        indent: colNumber === 2 && task?.parentId ? 1 : 0,
+      };
       cell.border = { bottom: { style: 'thin', color: { argb: 'FFE6E6E6' } } };
       if ([4, 6, 8].includes(colNumber)) {
         cell.numFmt = '0.0';
       }
     });
   }
+}
+
+function rollupParentTasks(tasks: ProjectTask[]): ProjectTask[] {
+  const childrenByParent = new Map<string, ProjectTask[]>();
+  tasks.forEach((task) => {
+    if (!task.parentId) return;
+    const children = childrenByParent.get(task.parentId) || [];
+    children.push(task);
+    childrenByParent.set(task.parentId, children);
+  });
+
+  return tasks.map((task) => {
+    const children = childrenByParent.get(task.id) || [];
+    if (children.length === 0) return task;
+
+    const backendStatus = aggregateStatuses(children.map((child) => child.backendStatus));
+    const frontendStatus = aggregateStatuses(children.map((child) => child.frontendStatus));
+    const backendEstimateDays = children.reduce((sum, child) => sum + (child.backendEstimateDays || 0), 0) || null;
+    const frontendEstimateDays = children.reduce((sum, child) => sum + (child.frontendEstimateDays || 0), 0) || null;
+
+    return {
+      ...task,
+      backendStatus,
+      frontendStatus,
+      backendEstimateDays,
+      frontendEstimateDays,
+      overallStatus: computeOverallStatus(backendStatus, frontendStatus),
+      totalEstimateDays: (backendEstimateDays || 0) + (frontendEstimateDays || 0) || null,
+    };
+  });
 }
 
 function legacyToken(status: string): string {

@@ -1,6 +1,15 @@
 import type { ElectronAPI, ProjectFile, ProjectFolder, ProjectWorkbook } from './types/project';
 import { computeOverallStatus } from '../shared/status';
 
+function workbookNameForFolder(folderName: string, rawWorkbookName: string): string {
+  const baseFolder = folderName.replace(/^PRJ_/i, '');
+  const baseWorkbook = rawWorkbookName.replace(/\.xlsx$/i, '').trim();
+  const joined = baseWorkbook.toLowerCase().startsWith(`${baseFolder}_`.toLowerCase())
+    ? baseWorkbook
+    : `${baseFolder}_${baseWorkbook}`;
+  return joined.toLowerCase().endsWith('.xlsx') ? joined : `${joined}.xlsx`;
+}
+
 const statuses = [
   { value: 0, name: 'Non iniziato' },
   { value: 1, name: 'Work in progress' },
@@ -143,9 +152,10 @@ export function installMockApi(): void {
         return folder;
       },
       createWorkbook: async (input) => {
+        const name = workbookNameForFolder(input.folderName, input.fileName);
         const file = {
           id: crypto.randomUUID(),
-          name: input.fileName.endsWith('.xlsx') ? input.fileName : `${input.fileName}.xlsx`,
+          name,
           folderName: input.folderName,
           folderPath: input.folderPath,
           lastModifiedDateTime: new Date().toISOString(),

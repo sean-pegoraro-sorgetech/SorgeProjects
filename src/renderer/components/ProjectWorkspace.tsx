@@ -1,8 +1,12 @@
 import { type MouseEvent, useEffect, useMemo, useState } from 'react';
 import {
+  ChevronDown,
+  ChevronRight,
+  CornerDownRight,
   ExternalLink,
   FileSpreadsheet,
   Folder,
+  ListPlus,
   PanelLeftOpen,
   Plus,
   RefreshCw,
@@ -12,7 +16,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import type { ProjectFile, ProjectFolder, ProjectTask, ProjectWorkbook, StatusOption } from '../types/project';
-import { computeOverallStatus, missingCounterpartLabel, statusClassName } from '../../shared/status';
+import { aggregateStatuses, computeOverallStatus, missingCounterpartLabel, statusClassName } from '../../shared/status';
 
 const FAVORITES_KEY = 'project-step-manager:favorites';
 
@@ -57,6 +61,8 @@ function emptyTask(statuses: StatusOption[]): ProjectTask {
   const fallback = statuses.find((status) => status.name === 'Da Definire')?.name || statuses[0]?.name || 'Da Definire';
   return {
     id: `new-${crypto.randomUUID()}`,
+    parentId: null,
+    level: 0,
     area: '',
     task: '',
     backendStatus: fallback,
@@ -91,6 +97,41 @@ function workbookLabel(file: ProjectFile): string {
   return file.folderName ? `${file.folderName} / ${file.name}` : file.name;
 }
 
+function buildChildrenMap(tasks: ProjectTask[]): Map<string, ProjectTask[]> {
+  const childrenByParent = new Map<string, ProjectTask[]>();
+  tasks.forEach((task) => {
+    if (!task.parentId) return;
+    const children = childrenByParent.get(task.parentId) || [];
+    children.push(task);
+    childrenByParent.set(task.parentId, children);
+  });
+  return childrenByParent;
+}
+
+function rollupTask(task: ProjectTask, children: ProjectTask[]): ProjectTask {
+  if (children.length === 0) return task;
+
+  const backendStatus = aggregateStatuses(children.map((child) => child.backendStatus));
+  const frontendStatus = aggregateStatuses(children.map((child) => child.frontendStatus));
+  const backendEstimateDays = children.reduce((sum, child) => sum + (child.backendEstimateDays || 0), 0) || null;
+  const frontendEstimateDays = children.reduce((sum, child) => sum + (child.frontendEstimateDays || 0), 0) || null;
+
+  return {
+    ...task,
+    backendStatus,
+    frontendStatus,
+    backendEstimateDays,
+    frontendEstimateDays,
+    overallStatus: computeOverallStatus(backendStatus, frontendStatus),
+    totalEstimateDays: (backendEstimateDays || 0) + (frontendEstimateDays || 0) || null,
+  };
+}
+
+function rollupParentTasks(tasks: ProjectTask[]): ProjectTask[] {
+  const childrenByParent = buildChildrenMap(tasks);
+  return tasks.map((task) => rollupTask(task, childrenByParent.get(task.id) || []));
+}
+
 export default function ProjectWorkspace() {
   const [folders, setFolders] = useState<ProjectFolder[]>([]);
   const [query, setQuery] = useState('');
@@ -105,6 +146,7 @@ export default function ProjectWorkspace() {
   const [newWorkbookName, setNewWorkbookName] = useState('');
   const [libraryOpen, setLibraryOpen] = useState(true);
   const [favorites, setFavorites] = useState<Favorites>(() => readFavorites());
+  const [expandedFolderIds, setExpandedFolderIds] = useState<string[]>([]);
 
   const selectedFolder = useMemo(
     () => folders.find((folder) => folder.id === selectedFolderId) || null,
@@ -120,6 +162,12 @@ export default function ProjectWorkspace() {
       setSelectedFolderId((current) => {
         if (current && items.some((folder) => folder.id === current)) return current;
         return items[0]?.id || null;
+      });
+      setExpandedFolderIds((current) => {
+        const existingIds = new Set(items.map((folder) => folder.id));
+        const next = current.filter((id) => existingIds.has(id));
+        if (next.length > 0) return next;
+        return items[0]?.id ? [items[0].id] : [];
       });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
@@ -161,6 +209,7 @@ export default function ProjectWorkspace() {
       setNewFolderName('');
       await loadProjects();
       setSelectedFolderId(folder.id);
+      setExpandedFolderIds((current) => current.includes(folder.id) ? current : [folder.id, ...current]);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -182,6 +231,7 @@ export default function ProjectWorkspace() {
       setDirty(false);
       setLibraryOpen(false);
       setNewWorkbookName('');
+      setExpandedFolderIds((current) => current.includes(selectedFolder.id) ? current : [selectedFolder.id, ...current]);
       await loadProjects();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
@@ -210,6 +260,7 @@ export default function ProjectWorkspace() {
         setDirty(false);
       }
       if (selectedFolderId === folder.id) setSelectedFolderId(null);
+      setExpandedFolderIds((current) => current.filter((id) => id !== folder.id));
       await loadProjects();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
@@ -241,13 +292,15 @@ export default function ProjectWorkspace() {
     setSaving(true);
     setError(null);
     try {
+      const tasksWithRollups = rollupParentTasks(selected.tasks);
+      const children = buildChildrenMap(tasksWithRollups);
       const saved = await window.api.projects.save({
         file: selected.file,
         sheetName: selected.sheetName,
         format: selected.format,
         statuses: selected.statuses,
-        tasks: selected.tasks
-          .filter((task) => task.task.trim())
+        tasks: tasksWithRollups
+          .filter((task) => task.task.trim() || (children.get(task.id)?.length || 0) > 0)
           .map((task) => ({
             ...task,
             overallStatus: computeOverallStatus(task.backendStatus, task.frontendStatus),
@@ -285,9 +338,30 @@ export default function ProjectWorkspace() {
     setDirty(true);
   };
 
+  const addSubtask = (parent: ProjectTask) => {
+    if (!selected) return;
+    const subtask = {
+      ...emptyTask(selected.statuses),
+      parentId: parent.id,
+      level: (parent.level || 0) + 1,
+      area: parent.area,
+    };
+    const parentIndex = selected.tasks.findIndex((task) => task.id === parent.id);
+    const insertIndex = selected.tasks.reduce((lastIndex, task, index) => {
+      if (task.id === parent.id || task.parentId === parent.id) return index + 1;
+      return lastIndex;
+    }, parentIndex + 1);
+    const nextTasks = [...selected.tasks];
+    nextTasks.splice(insertIndex, 0, subtask);
+    setSelected({ ...selected, tasks: nextTasks });
+    setDirty(true);
+  };
+
   const deleteTask = (id: string) => {
     if (!selected) return;
-    setSelected({ ...selected, tasks: selected.tasks.filter((task) => task.id !== id) });
+    const children = selected.tasks.filter((task) => task.parentId === id);
+    if (children.length > 0 && !confirm(`Eliminare anche ${children.length} sotto-task collegati?`)) return;
+    setSelected({ ...selected, tasks: selected.tasks.filter((task) => task.id !== id && task.parentId !== id) });
     setDirty(true);
   };
 
@@ -307,6 +381,15 @@ export default function ProjectWorkspace() {
       saveFavorites(next);
       return next;
     });
+  };
+
+  const toggleFolderExpanded = (folder: ProjectFolder) => {
+    setSelectedFolderId(folder.id);
+    setExpandedFolderIds((current) =>
+      current.includes(folder.id)
+        ? current.filter((id) => id !== folder.id)
+        : [folder.id, ...current]
+    );
   };
 
   const filteredFolders = useMemo(() => {
@@ -344,18 +427,22 @@ export default function ProjectWorkspace() {
       );
   }, [favorites, folders, query]);
 
+  const childrenByParent = useMemo(() => buildChildrenMap(selected?.tasks || []), [selected]);
+  const rolledTasks = useMemo(() => rollupParentTasks(selected?.tasks || []), [selected]);
+
   const summary = useMemo(() => {
-    const tasks = selected?.tasks || [];
+    const tasks = rolledTasks;
+    const estimateTasks = rolledTasks.filter((task) => !task.parentId);
     const done = tasks.filter((task) => statusClassName(computeOverallStatus(task.backendStatus, task.frontendStatus)) === 'done').length;
     const active = tasks.filter((task) =>
       ['progress', 'review'].includes(statusClassName(computeOverallStatus(task.backendStatus, task.frontendStatus)))
     ).length;
-    const totalEstimate = tasks.reduce((sum, task) => {
+    const totalEstimate = estimateTasks.reduce((sum, task) => {
       const estimate = (task.backendEstimateDays || 0) + (task.frontendEstimateDays || 0);
       return sum + estimate;
     }, 0);
     return { total: tasks.length, done, active, totalEstimate };
-  }, [selected]);
+  }, [rolledTasks]);
 
   return (
     <div className={`workspace-shell${selected && !libraryOpen ? ' library-hidden' : ''}`}>
@@ -394,7 +481,8 @@ export default function ProjectWorkspace() {
           {filteredFolders.map((folder) => (
             <div key={folder.id} className={`folder-group${selectedFolderId === folder.id ? ' active' : ''}`}>
               <div className="folder-row">
-                <button className="folder-main" onClick={() => setSelectedFolderId(folder.id)}>
+                <button className="folder-main" onClick={() => toggleFolderExpanded(folder)}>
+                  {expandedFolderIds.includes(folder.id) ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                   <Folder size={17} />
                   <span>
                     <strong>{folder.name}</strong>
@@ -414,7 +502,7 @@ export default function ProjectWorkspace() {
                   </button>
                 )}
               </div>
-              {selectedFolderId === folder.id && (
+              {expandedFolderIds.includes(folder.id) && (
                 <div className="folder-files">
                   {folder.files.map((file) => (
                     <div
@@ -561,19 +649,34 @@ export default function ProjectWorkspace() {
                   </tr>
                 </thead>
                 <tbody>
-                  {selected.tasks.map((task) => (
-                    <tr key={task.id}>
+                  {selected.tasks.map((task) => {
+                    const childTasks = childrenByParent.get(task.id) || [];
+                    const hasChildren = childTasks.length > 0;
+                    const displayTask = rollupTask(task, childTasks);
+                    const isSubtask = Boolean(task.parentId);
+                    return (
+                    <tr key={task.id} className={`${isSubtask ? 'subtask-row' : ''}${hasChildren ? ' parent-task-row' : ''}`}>
                       <td>
                         <input value={task.area} onChange={(event) => updateTask(task.id, { area: event.target.value })} />
                       </td>
                       <td className="task-name-cell">
-                        <textarea value={task.task} onChange={(event) => updateTask(task.id, { task: event.target.value })} />
+                        <div className={`task-name-control${isSubtask ? ' child' : ''}`}>
+                          {isSubtask && <CornerDownRight size={15} />}
+                          <textarea
+                            rows={1}
+                            value={task.task}
+                            onChange={(event) => updateTask(task.id, { task: event.target.value })}
+                            placeholder={isSubtask ? 'Sotto-task' : 'Task'}
+                          />
+                        </div>
+                        {hasChildren && <small className="computed-hint">Stato e stime calcolati dai sotto-task</small>}
                       </td>
                       <td>
                         <select
-                          value={task.backendStatus}
-                          className={`status-select ${statusClassName(task.backendStatus)}`}
+                          value={displayTask.backendStatus}
+                          className={`status-select ${statusClassName(displayTask.backendStatus)}`}
                           onChange={(event) => updateTask(task.id, { backendStatus: event.target.value })}
+                          disabled={hasChildren}
                         >
                           {selected.statuses.map((status) => <option key={status.value} value={status.name}>{status.name}</option>)}
                         </select>
@@ -581,15 +684,17 @@ export default function ProjectWorkspace() {
                       <td className="estimate-col">
                         <input
                           className="number-input"
-                          value={task.backendEstimateDays ?? ''}
+                          value={displayTask.backendEstimateDays ?? ''}
                           onChange={(event) => updateTask(task.id, { backendEstimateDays: numericValue(event.target.value) })}
+                          disabled={hasChildren}
                         />
                       </td>
                       <td>
                         <select
-                          value={task.frontendStatus}
-                          className={`status-select ${statusClassName(task.frontendStatus)}`}
+                          value={displayTask.frontendStatus}
+                          className={`status-select ${statusClassName(displayTask.frontendStatus)}`}
                           onChange={(event) => updateTask(task.id, { frontendStatus: event.target.value })}
+                          disabled={hasChildren}
                         >
                           {selected.statuses.map((status) => <option key={status.value} value={status.name}>{status.name}</option>)}
                         </select>
@@ -597,34 +702,45 @@ export default function ProjectWorkspace() {
                       <td className="estimate-col">
                         <input
                           className="number-input"
-                          value={task.frontendEstimateDays ?? ''}
+                          value={displayTask.frontendEstimateDays ?? ''}
                           onChange={(event) => updateTask(task.id, { frontendEstimateDays: numericValue(event.target.value) })}
+                          disabled={hasChildren}
                         />
                       </td>
                       <td>
                         <div className="computed-status-cell">
-                          <span className={`status-badge ${statusClassName(computeOverallStatus(task.backendStatus, task.frontendStatus))}`}>
-                            {computeOverallStatus(task.backendStatus, task.frontendStatus)}
+                          <span className={`status-badge ${statusClassName(computeOverallStatus(displayTask.backendStatus, displayTask.frontendStatus))}`}>
+                            {computeOverallStatus(displayTask.backendStatus, displayTask.frontendStatus)}
                           </span>
-                          {missingCounterpartLabel(task.backendStatus, task.frontendStatus) && (
-                            <small>{missingCounterpartLabel(task.backendStatus, task.frontendStatus)}</small>
+                          {hasChildren && <small>Da {childTasks.length} sotto-task</small>}
+                          {!hasChildren && missingCounterpartLabel(displayTask.backendStatus, displayTask.frontendStatus) && (
+                            <small>{missingCounterpartLabel(displayTask.backendStatus, displayTask.frontendStatus)}</small>
                           )}
                         </div>
                       </td>
                       <td className="note-cell">
                         <textarea
+                          rows={1}
                           value={task.note1 || ''}
                           onChange={(event) => updateTask(task.id, { note1: event.target.value })}
                           placeholder="Nota 1"
                         />
                       </td>
                       <td>
-                        <button className="icon-button danger" onClick={() => deleteTask(task.id)} title="Elimina task">
-                          <Trash2 size={16} />
-                        </button>
+                        <div className="row-actions">
+                          {!isSubtask && (
+                            <button className="icon-button" onClick={() => addSubtask(task)} title="Aggiungi sotto-task">
+                              <ListPlus size={16} />
+                            </button>
+                          )}
+                          <button className="icon-button danger" onClick={() => deleteTask(task.id)} title="Elimina task">
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

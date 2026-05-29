@@ -17,6 +17,46 @@
   font-synthesis: none;
 }
 
+:root[data-theme='light'] {
+  --bg: oklch(96% 0.008 245);
+  --surface: oklch(99% 0.004 245);
+  --surface-2: oklch(94% 0.01 245);
+  --surface-3: oklch(89% 0.014 245);
+  --text: oklch(20% 0.014 245);
+  --text-muted: oklch(48% 0.018 245);
+  --text-soft: oklch(32% 0.016 245);
+  --border: oklch(82% 0.014 245);
+  --primary: oklch(55% 0.16 245);
+  --primary-hover: oklch(48% 0.16 245);
+}
+
+:root[data-theme='sorgetech'] {
+  --bg: oklch(13% 0.018 248);
+  --surface: oklch(18% 0.022 248);
+  --surface-2: oklch(23% 0.028 248);
+  --surface-3: oklch(29% 0.034 248);
+  --text: oklch(94% 0.008 248);
+  --text-muted: oklch(70% 0.026 248);
+  --text-soft: oklch(80% 0.018 248);
+  --border: oklch(34% 0.036 248);
+  --primary: oklch(68% 0.18 235);
+  --primary-hover: oklch(73% 0.18 235);
+}
+
+:root[data-theme='forest'] {
+  --bg: oklch(14% 0.018 160);
+  --surface: oklch(19% 0.022 160);
+  --surface-2: oklch(24% 0.026 160);
+  --surface-3: oklch(30% 0.03 160);
+  --text: oklch(94% 0.008 160);
+  --text-muted: oklch(70% 0.026 160);
+  --text-soft: oklch(80% 0.018 160);
+  --border: oklch(34% 0.036 160);
+  --primary: oklch(68% 0.15 155);
+  --primary-hover: oklch(73% 0.15 155);
+  --success: oklch(75% 0.16 145);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -458,6 +498,10 @@ h2 {
   padding: 0;
 }
 
+.folder-main {
+  align-items: center;
+}
+
 .folder-row span {
   min-width: 0;
 }
@@ -702,7 +746,7 @@ h2 {
 
 .task-table {
   width: 100%;
-  min-width: 1360px;
+  min-width: 1630px;
   border-collapse: collapse;
 }
 
@@ -771,6 +815,12 @@ h2 {
   min-width: 260px;
 }
 
+.task-table th:nth-child(9),
+.task-table td:nth-child(9) {
+  width: 92px;
+  min-width: 92px;
+}
+
 .task-table .estimate-col {
   width: 84px;
   min-width: 84px;
@@ -785,12 +835,57 @@ h2 {
 .task-table textarea {
   resize: vertical;
   min-height: 38px;
+  height: 38px;
   line-height: 1.35;
 }
 
 .task-name-cell textarea,
 .note-cell textarea {
-  min-height: 64px;
+  min-height: 38px;
+}
+
+.task-name-control {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.task-name-control.child {
+  padding-left: 16px;
+}
+
+.task-name-control svg {
+  color: var(--text-muted);
+  margin-top: 10px;
+  flex: 0 0 auto;
+}
+
+.computed-hint {
+  display: block;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  margin-top: 5px;
+}
+
+.parent-task-row td {
+  background: color-mix(in oklch, var(--surface-2) 28%, transparent);
+}
+
+.subtask-row td {
+  background: color-mix(in oklch, var(--surface-2) 18%, transparent);
+}
+
+.task-table input:disabled,
+.task-table select:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
+.row-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
 }
 
 .number-input {
@@ -927,6 +1022,17 @@ h2 {
   margin-bottom: 16px;
 }
 
+.section-title.with-icon {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.section-title.with-icon > svg {
+  color: var(--primary);
+  margin-top: 1px;
+}
+
 .section-title p {
   color: var(--text-muted);
   line-height: 1.45;
@@ -992,6 +1098,56 @@ h2 {
   color: var(--success);
   font-weight: 700;
   font-size: 13px;
+}
+
+.theme-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.theme-option {
+  min-height: 48px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  text-align: left;
+}
+
+.theme-option:hover,
+.theme-option.active {
+  border-color: color-mix(in oklch, var(--primary) 60%, var(--border));
+  background: color-mix(in oklch, var(--primary) 14%, var(--surface-2));
+}
+
+.theme-swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: linear-gradient(135deg, var(--surface) 0 50%, var(--primary) 50% 100%);
+  flex: 0 0 auto;
+}
+
+.theme-option.dark .theme-swatch {
+  background: linear-gradient(135deg, oklch(19% 0.008 255) 0 50%, oklch(66% 0.16 245) 50% 100%);
+}
+
+.theme-option.light .theme-swatch {
+  background: linear-gradient(135deg, oklch(99% 0.004 245) 0 50%, oklch(55% 0.16 245) 50% 100%);
+}
+
+.theme-option.sorgetech .theme-swatch {
+  background: linear-gradient(135deg, oklch(18% 0.022 248) 0 50%, oklch(68% 0.18 235) 50% 100%);
+}
+
+.theme-option.forest .theme-swatch {
+  background: linear-gradient(135deg, oklch(19% 0.022 160) 0 50%, oklch(68% 0.15 155) 50% 100%);
 }
 
 .spinner {

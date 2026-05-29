@@ -42,6 +42,22 @@ export function computeOverallStatus(statusA: string, statusB: string): KnownSta
   return STATUS_NAMES.undefined;
 }
 
+export function aggregateStatuses(values: string[]): KnownStatus {
+  const statuses = values.map((value) => normalizeStatusName(value));
+
+  if (statuses.length === 0) return STATUS_NAMES.undefined;
+  if (statuses.every((status) => status === STATUS_NAMES.notStarted)) return STATUS_NAMES.notStarted;
+  if (statuses.includes(STATUS_NAMES.undefined)) return STATUS_NAMES.undefined;
+  if (statuses.includes(STATUS_NAMES.paused)) return STATUS_NAMES.paused;
+  if (statuses.includes(STATUS_NAMES.deferred)) return STATUS_NAMES.deferred;
+  if (statuses.every((status) => status === STATUS_NAMES.done)) return STATUS_NAMES.done;
+  if (statuses.includes(STATUS_NAMES.notStarted)) return STATUS_NAMES.inProgress;
+  if (statuses.includes(STATUS_NAMES.inProgress)) return STATUS_NAMES.inProgress;
+  if (statuses.includes(STATUS_NAMES.review)) return STATUS_NAMES.review;
+
+  return STATUS_NAMES.undefined;
+}
+
 export function missingCounterpartLabel(backendStatus: string, frontendStatus: string): string | null {
   const backend = normalizeStatusName(backendStatus);
   const frontend = normalizeStatusName(frontendStatus);

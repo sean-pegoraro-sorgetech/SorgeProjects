@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import Sidebar from './components/Sidebar';
 import SettingsPage from './components/SettingsPage';
 import ProjectWorkspace from './components/ProjectWorkspace';
+import { applyTheme, getThemePreference } from './theme';
 
 type Page = 'projects' | 'settings';
 
@@ -17,6 +18,7 @@ export default function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   useEffect(() => {
+    applyTheme(getThemePreference());
     window.api.auth.getAccount().then((account) => {
       setUser(account);
       setLoading(false);

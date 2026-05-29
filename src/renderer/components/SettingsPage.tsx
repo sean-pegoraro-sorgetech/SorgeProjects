@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
+import { Palette } from 'lucide-react';
 import type { AppSettings } from '../types/project';
+import { getThemePreference, setThemePreference, THEMES, type ThemeName } from '../theme';
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [azureConfig, setAzureConfig] = useState({ clientId: '', tenantId: '' });
+  const [theme, setTheme] = useState<ThemeName>(() => getThemePreference());
   const [saved, setSaved] = useState(false);
   const [azureSaved, setAzureSaved] = useState(false);
   const [resolvingDrive, setResolvingDrive] = useState(false);
@@ -24,6 +27,11 @@ export default function SettingsPage() {
     await window.api.azure.set(azureConfig);
     setAzureSaved(true);
     window.setTimeout(() => setAzureSaved(false), 2000);
+  };
+
+  const changeTheme = (nextTheme: ThemeName) => {
+    setTheme(nextTheme);
+    setThemePreference(nextTheme);
   };
 
   const resolveDrive = async () => {
@@ -195,6 +203,30 @@ export default function SettingsPage() {
               onChange={(event) => updateDefaults('initialRows', Number(event.target.value))}
             />
           </div>
+        </div>
+      </section>
+
+      <section className="form-section">
+        <div className="section-title with-icon">
+          <Palette size={18} />
+          <div>
+            <h2>Personalizzazione</h2>
+            <p>Il tema e' salvato su questa macchina e viene applicato subito.</p>
+          </div>
+        </div>
+        <div className="theme-options" role="radiogroup" aria-label="Tema applicazione">
+          {THEMES.map((item) => (
+            <button
+              key={item.value}
+              className={`theme-option ${item.value}${theme === item.value ? ' active' : ''}`}
+              onClick={() => changeTheme(item.value)}
+              role="radio"
+              aria-checked={theme === item.value}
+            >
+              <span className="theme-swatch" />
+              <span>{item.label}</span>
+            </button>
+          ))}
         </div>
       </section>
 
