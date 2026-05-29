@@ -1,16 +1,57 @@
-import { useEffect, useMemo, useState } from 'react';
+import { type MouseEvent, useEffect, useMemo, useState } from 'react';
 import {
   ExternalLink,
   FileSpreadsheet,
   Folder,
+  PanelLeftOpen,
   Plus,
   RefreshCw,
   Save,
   Search,
+  Star,
   Trash2,
 } from 'lucide-react';
 import type { ProjectFile, ProjectFolder, ProjectTask, ProjectWorkbook, StatusOption } from '../types/project';
 import { computeOverallStatus, missingCounterpartLabel, statusClassName } from '../../shared/status';
+
+const FAVORITES_KEY = 'project-step-manager:favorites';
+
+interface Favorites {
+  folderIds: string[];
+  fileIds: string[];
+}
+
+const emptyFavorites: Favorites = {
+  folderIds: [],
+  fileIds: [],
+};
+
+function readFavorites(): Favorites {
+  try {
+    const raw = window.localStorage.getItem(FAVORITES_KEY);
+    if (!raw) return emptyFavorites;
+    const parsed = JSON.parse(raw) as Partial<Favorites>;
+    return {
+      folderIds: Array.isArray(parsed.folderIds) ? parsed.folderIds.filter((id): id is string => typeof id === 'string') : [],
+      fileIds: Array.isArray(parsed.fileIds) ? parsed.fileIds.filter((id): id is string => typeof id === 'string') : [],
+    };
+  } catch {
+    return emptyFavorites;
+  }
+}
+
+function saveFavorites(favorites: Favorites) {
+  window.localStorage.setItem(FAVORITES_KEY, JSON.stringify(favorites));
+}
+
+function toggleId(ids: string[], id: string): string[] {
+  return ids.includes(id) ? ids.filter((item) => item !== id) : [id, ...ids];
+}
+
+function compareFavoriteName(aName: string, aFavorite: boolean, bName: string, bFavorite: boolean): number {
+  if (aFavorite !== bFavorite) return aFavorite ? -1 : 1;
+  return aName.localeCompare(bName, 'it', { sensitivity: 'base' });
+}
 
 function emptyTask(statuses: StatusOption[]): ProjectTask {
   const fallback = statuses.find((status) => status.name === 'Da Definire')?.name || statuses[0]?.name || 'Da Definire';
@@ -62,6 +103,8 @@ export default function ProjectWorkspace() {
   const [error, setError] = useState<string | null>(null);
   const [newFolderName, setNewFolderName] = useState('');
   const [newWorkbookName, setNewWorkbookName] = useState('');
+  const [libraryOpen, setLibraryOpen] = useState(true);
+  const [favorites, setFavorites] = useState<Favorites>(() => readFavorites());
 
   const selectedFolder = useMemo(
     () => folders.find((folder) => folder.id === selectedFolderId) || null,
@@ -89,6 +132,10 @@ export default function ProjectWorkspace() {
     loadProjects();
   }, []);
 
+  useEffect(() => {
+    if (!selected) setLibraryOpen(true);
+  }, [selected]);
+
   const openProject = async (file: ProjectFile) => {
     if (dirty && !confirm('Ci sono modifiche non salvate. Vuoi cambiare Excel senza salvarle?')) return;
     setLoadingWorkbook(true);
@@ -97,6 +144,7 @@ export default function ProjectWorkspace() {
       const workbook = await window.api.projects.load(file);
       setSelected(workbook);
       setDirty(false);
+      setLibraryOpen(false);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -132,6 +180,7 @@ export default function ProjectWorkspace() {
       });
       setSelected(workbook);
       setDirty(false);
+      setLibraryOpen(false);
       setNewWorkbookName('');
       await loadProjects();
     } catch (err: unknown) {
@@ -242,18 +291,58 @@ export default function ProjectWorkspace() {
     setDirty(true);
   };
 
+  const toggleFolderFavorite = (event: MouseEvent<HTMLButtonElement>, folderId: string) => {
+    event.stopPropagation();
+    setFavorites((current) => {
+      const next = { ...current, folderIds: toggleId(current.folderIds, folderId) };
+      saveFavorites(next);
+      return next;
+    });
+  };
+
+  const toggleFileFavorite = (event: MouseEvent<HTMLButtonElement>, fileId: string) => {
+    event.stopPropagation();
+    setFavorites((current) => {
+      const next = { ...current, fileIds: toggleId(current.fileIds, fileId) };
+      saveFavorites(next);
+      return next;
+    });
+  };
+
   const filteredFolders = useMemo(() => {
     const text = query.toLowerCase().trim();
-    if (!text) return folders;
-    return folders
+    const visibleFolders = text
+      ? folders
+        .map((folder) => ({
+          ...folder,
+          files: folder.files.filter((file) =>
+            `${folder.name} ${file.name}`.toLowerCase().includes(text)
+          ),
+        }))
+        .filter((folder) => folder.name.toLowerCase().includes(text) || folder.files.length > 0)
+      : folders;
+
+    return visibleFolders
       .map((folder) => ({
         ...folder,
-        files: folder.files.filter((file) =>
-          `${folder.name} ${file.name}`.toLowerCase().includes(text)
+        files: [...folder.files].sort((a, b) =>
+          compareFavoriteName(
+            a.name,
+            favorites.fileIds.includes(a.id),
+            b.name,
+            favorites.fileIds.includes(b.id)
+          )
         ),
       }))
-      .filter((folder) => folder.name.toLowerCase().includes(text) || folder.files.length > 0);
-  }, [folders, query]);
+      .sort((a, b) =>
+        compareFavoriteName(
+          a.name,
+          favorites.folderIds.includes(a.id),
+          b.name,
+          favorites.folderIds.includes(b.id)
+        )
+      );
+  }, [favorites, folders, query]);
 
   const summary = useMemo(() => {
     const tasks = selected?.tasks || [];
@@ -269,7 +358,8 @@ export default function ProjectWorkspace() {
   }, [selected]);
 
   return (
-    <div className="workspace-shell">
+    <div className={`workspace-shell${selected && !libraryOpen ? ' library-hidden' : ''}`}>
+      {libraryOpen && (
       <aside className="project-list">
         <div className="project-list-header">
           <div>
@@ -311,6 +401,13 @@ export default function ProjectWorkspace() {
                     <small>{folder.files.length} Excel</small>
                   </span>
                 </button>
+                <button
+                  className={`row-action-btn favorite-btn${favorites.folderIds.includes(folder.id) ? ' active' : ''}`}
+                  onClick={(event) => toggleFolderFavorite(event, folder.id)}
+                  title={favorites.folderIds.includes(folder.id) ? 'Rimuovi dai preferiti' : 'Aggiungi cartella ai preferiti'}
+                >
+                  <Star size={15} />
+                </button>
                 {!folder.isRoot && (
                   <button className="row-delete-btn" onClick={() => deleteFolder(folder)} title="Cancella cartella progetto">
                     <Trash2 size={15} />
@@ -331,6 +428,13 @@ export default function ProjectWorkspace() {
                           <small>{formatDate(file.lastModifiedDateTime)}</small>
                         </span>
                       </button>
+                      <button
+                        className={`row-action-btn favorite-btn${favorites.fileIds.includes(file.id) ? ' active' : ''}`}
+                        onClick={(event) => toggleFileFavorite(event, file.id)}
+                        title={favorites.fileIds.includes(file.id) ? 'Rimuovi dai preferiti' : 'Aggiungi Excel ai preferiti'}
+                      >
+                        <Star size={15} />
+                      </button>
                       <button className="row-delete-btn" onClick={() => deleteWorkbook(file)} title="Cancella Excel">
                         <Trash2 size={15} />
                       </button>
@@ -346,14 +450,31 @@ export default function ProjectWorkspace() {
           )}
         </div>
       </aside>
+      )}
 
       <section className="project-detail">
         {error && <div className="alert error">{error}</div>}
 
         <div className="folder-toolbar">
-          <div>
-            <p className="eyebrow">Cartella selezionata</p>
-            <h2>{selectedFolder?.name || 'Nessuna cartella'}</h2>
+          <div className="folder-toolbar-title">
+            {selected && !libraryOpen && (
+              <button className="icon-button" onClick={() => setLibraryOpen(true)} title="Mostra cartelle e Excel">
+                <PanelLeftOpen size={18} />
+              </button>
+            )}
+            <div>
+              <p className="eyebrow">Cartella selezionata</p>
+              <h2>{selectedFolder?.name || 'Nessuna cartella'}</h2>
+            </div>
+            {selectedFolder && (
+              <button
+                className={`icon-button favorite-btn${favorites.folderIds.includes(selectedFolder.id) ? ' active' : ''}`}
+                onClick={(event) => toggleFolderFavorite(event, selectedFolder.id)}
+                title={favorites.folderIds.includes(selectedFolder.id) ? 'Rimuovi cartella dai preferiti' : 'Aggiungi cartella ai preferiti'}
+              >
+                <Star size={17} />
+              </button>
+            )}
           </div>
           <div className="new-workbook">
             <input
@@ -395,6 +516,13 @@ export default function ProjectWorkspace() {
                 <p className="muted">Foglio: {selected.sheetName} - Ultimo caricamento: {formatDate(selected.loadedAt)}</p>
               </div>
               <div className="detail-actions">
+                <button
+                  className={`icon-button favorite-btn${favorites.fileIds.includes(selected.file.id) ? ' active' : ''}`}
+                  onClick={(event) => toggleFileFavorite(event, selected.file.id)}
+                  title={favorites.fileIds.includes(selected.file.id) ? 'Rimuovi Excel dai preferiti' : 'Aggiungi Excel ai preferiti'}
+                >
+                  <Star size={17} />
+                </button>
                 {selected.file.webUrl && (
                   <a className="btn btn-outline" href={selected.file.webUrl} target="_blank" rel="noreferrer">
                     <ExternalLink size={16} /> Excel
@@ -483,7 +611,7 @@ export default function ProjectWorkspace() {
                           )}
                         </div>
                       </td>
-                      <td>
+                      <td className="note-cell">
                         <textarea
                           value={task.note1 || ''}
                           onChange={(event) => updateTask(task.id, { note1: event.target.value })}

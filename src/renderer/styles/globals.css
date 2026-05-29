@@ -322,6 +322,10 @@ h2 {
   grid-template-columns: 330px minmax(0, 1fr);
 }
 
+.workspace-shell.library-hidden {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .project-list {
   border-right: 1px solid var(--border);
   background: color-mix(in oklch, var(--surface) 76%, var(--bg));
@@ -430,7 +434,7 @@ h2 {
   background: transparent;
   color: var(--text);
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 10px;
   padding: 12px;
   width: 100%;
@@ -526,6 +530,7 @@ h2 {
   margin-top: 4px;
 }
 
+.row-action-btn,
 .row-delete-btn {
   width: 30px;
   height: 30px;
@@ -538,9 +543,28 @@ h2 {
   flex: 0 0 auto;
 }
 
+.row-action-btn:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
 .row-delete-btn:hover {
   background: color-mix(in oklch, var(--danger) 18%, transparent);
   color: var(--danger);
+}
+
+.favorite-btn {
+  color: var(--text-muted);
+}
+
+.favorite-btn:hover,
+.favorite-btn.active {
+  background: color-mix(in oklch, var(--warning) 15%, transparent);
+  color: var(--warning);
+}
+
+.favorite-btn.active svg {
+  fill: currentColor;
 }
 
 .empty-list {
@@ -576,6 +600,23 @@ h2 {
 
 .folder-toolbar h2 {
   font-size: 18px;
+}
+
+.folder-toolbar-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.folder-toolbar-title > div {
+  min-width: 0;
+}
+
+.folder-toolbar-title h2 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .new-workbook {
@@ -661,7 +702,7 @@ h2 {
 
 .task-table {
   width: 100%;
-  min-width: 1120px;
+  min-width: 1360px;
   border-collapse: collapse;
 }
 
@@ -694,8 +735,40 @@ h2 {
 .task-table select,
 .task-table textarea {
   width: 100%;
-  min-height: 34px;
-  padding: 7px 8px;
+  min-height: 38px;
+  padding: 8px 9px;
+}
+
+.task-table th:nth-child(1),
+.task-table td:nth-child(1) {
+  width: 150px;
+  min-width: 150px;
+}
+
+.task-table th:nth-child(2),
+.task-table td.task-name-cell {
+  width: 430px;
+  min-width: 430px;
+}
+
+.task-table th:nth-child(3),
+.task-table td:nth-child(3),
+.task-table th:nth-child(5),
+.task-table td:nth-child(5) {
+  width: 170px;
+  min-width: 170px;
+}
+
+.task-table th:nth-child(7),
+.task-table td:nth-child(7) {
+  width: 190px;
+  min-width: 190px;
+}
+
+.task-table th:nth-child(8),
+.task-table td.note-cell {
+  width: 260px;
+  min-width: 260px;
 }
 
 .task-table .estimate-col {
@@ -711,12 +784,13 @@ h2 {
 
 .task-table textarea {
   resize: vertical;
-  min-height: 34px;
+  min-height: 38px;
   line-height: 1.35;
 }
 
-.task-name-cell textarea {
-  min-height: 56px;
+.task-name-cell textarea,
+.note-cell textarea {
+  min-height: 64px;
 }
 
 .number-input {
@@ -785,7 +859,7 @@ h2 {
 }
 
 .status-badge {
-  min-height: 34px;
+  min-height: 38px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   display: inline-flex;
