@@ -3,6 +3,7 @@ import type {
   ElectronAPI,
   DeleteFolderInput,
   DeleteWorkbookInput,
+  ArchiveFolderInput,
   NewFolderInput,
   NewProjectInput,
   NewWorkbookInput,
@@ -25,6 +26,8 @@ const api: ElectronAPI = {
     createWorkbook: (input: NewWorkbookInput) => ipcRenderer.invoke('projects:createWorkbook', input),
     deleteFolder: (input: DeleteFolderInput) => ipcRenderer.invoke('projects:deleteFolder', input),
     deleteWorkbook: (input: DeleteWorkbookInput) => ipcRenderer.invoke('projects:deleteWorkbook', input),
+    archiveFolder: (input: ArchiveFolderInput) => ipcRenderer.invoke('projects:archiveFolder', input),
+    listTemplates: () => ipcRenderer.invoke('projects:listTemplates'),
   },
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),

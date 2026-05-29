@@ -1,21 +1,45 @@
 import { type MouseEvent, useEffect, useMemo, useState } from 'react';
 import {
+  Archive,
+  BarChart3,
+  Bell,
+  CalendarDays,
   ChevronDown,
   ChevronRight,
+  Clipboard,
+  Columns3,
   CornerDownRight,
   ExternalLink,
   FileSpreadsheet,
+  FileText,
+  Filter,
+  Flag,
   Folder,
+  LayoutDashboard,
+  Link,
   ListPlus,
+  Mail,
   PanelLeftOpen,
   Plus,
   RefreshCw,
   Save,
   Search,
+  Send,
   Star,
+  Table2,
   Trash2,
+  Users,
 } from 'lucide-react';
-import type { ProjectFile, ProjectFolder, ProjectTask, ProjectWorkbook, StatusOption } from '../types/project';
+import type {
+  AppSettings,
+  ProjectFile,
+  ProjectFolder,
+  ProjectLink,
+  ProjectTask,
+  ProjectTemplate,
+  ProjectWorkbook,
+  StatusOption,
+} from '../types/project';
 import { aggregateStatuses, computeOverallStatus, missingCounterpartLabel, statusClassName } from '../../shared/status';
 
 const FAVORITES_KEY = 'project-step-manager:favorites';
@@ -25,10 +49,34 @@ interface Favorites {
   fileIds: string[];
 }
 
+type WorkspaceView = 'dashboard' | 'table' | 'kanban' | 'report';
+type TaskFilter = 'all' | 'mine' | 'review' | 'paused' | 'overdue';
+
+interface UserInfo {
+  name: string;
+  email: string;
+}
+
+interface WorkbookSummary {
+  file: ProjectFile;
+  folderName: string;
+  total: number;
+  done: number;
+  review: number;
+  paused: number;
+  overdue: number;
+  active: number;
+  estimate: number;
+  overall: string;
+}
+
 const emptyFavorites: Favorites = {
   folderIds: [],
   fileIds: [],
 };
+
+const PRIORITIES = ['Bassa', 'Media', 'Alta', 'Critica'];
+const DEFAULT_LINKS = ['Repository', 'Test', 'Produzione', 'Documentazione', 'Teams', 'Ticket'];
 
 function readFavorites(): Favorites {
   try {
@@ -65,6 +113,9 @@ function emptyTask(statuses: StatusOption[]): ProjectTask {
     level: 0,
     area: '',
     task: '',
+    owner: '',
+    priority: 'Media',
+    dueDate: '',
     backendStatus: fallback,
     backendEstimateDays: null,
     frontendStatus: fallback,
@@ -87,6 +138,17 @@ function formatDate(value?: string): string {
   }).format(new Date(value));
 }
 
+function formatDateOnly(value?: string): string {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('it-IT', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(date);
+}
+
 function numericValue(value: string): number | null {
   if (!value.trim()) return null;
   const parsed = Number.parseFloat(value.replace(',', '.'));
@@ -95,6 +157,55 @@ function numericValue(value: string): number | null {
 
 function workbookLabel(file: ProjectFile): string {
   return file.folderName ? `${file.folderName} / ${file.name}` : file.name;
+}
+
+function isDone(task: ProjectTask): boolean {
+  return statusClassName(computeOverallStatus(task.backendStatus, task.frontendStatus)) === 'done';
+}
+
+function isOverdue(task: ProjectTask): boolean {
+  if (!task.dueDate || isDone(task)) return false;
+  const due = new Date(`${task.dueDate}T23:59:59`);
+  return !Number.isNaN(due.getTime()) && due.getTime() < Date.now();
+}
+
+function summarizeWorkbook(workbook: ProjectWorkbook): WorkbookSummary {
+  const tasks = rollupParentTasks(workbook.tasks);
+  const rootTasks = tasks.filter((task) => !task.parentId);
+  const done = tasks.filter(isDone).length;
+  const review = tasks.filter((task) => statusClassName(computeOverallStatus(task.backendStatus, task.frontendStatus)) === 'review').length;
+  const paused = tasks.filter((task) => statusClassName(computeOverallStatus(task.backendStatus, task.frontendStatus)) === 'paused').length;
+  const overdue = tasks.filter(isOverdue).length;
+  const active = tasks.filter((task) =>
+    ['progress', 'review'].includes(statusClassName(computeOverallStatus(task.backendStatus, task.frontendStatus)))
+  ).length;
+  const estimate = rootTasks.reduce((sum, task) => sum + (task.backendEstimateDays || 0) + (task.frontendEstimateDays || 0), 0);
+  const overall = aggregateStatuses(rootTasks.map((task) => computeOverallStatus(task.backendStatus, task.frontendStatus)));
+  return {
+    file: workbook.file,
+    folderName: workbook.file.folderName || 'Root',
+    total: tasks.length,
+    done,
+    review,
+    paused,
+    overdue,
+    active,
+    estimate,
+    overall,
+  };
+}
+
+function mergeDefaultLinks(links: ProjectLink[]): ProjectLink[] {
+  const existing = new Map(links.map((link) => [link.label, link.url]));
+  const defaults = DEFAULT_LINKS.map((label) => ({ label, url: existing.get(label) || '' }));
+  const custom = links.filter((link) => !DEFAULT_LINKS.includes(link.label));
+  return [...defaults, ...custom];
+}
+
+function ownerMatches(task: ProjectTask, user: UserInfo | null): boolean {
+  if (!user || !task.owner) return false;
+  const owner = task.owner.toLowerCase();
+  return owner.includes(user.email.toLowerCase()) || owner.includes((user.name || '').toLowerCase());
 }
 
 function buildChildrenMap(tasks: ProjectTask[]): Map<string, ProjectTask[]> {
@@ -147,11 +258,29 @@ export default function ProjectWorkspace() {
   const [libraryOpen, setLibraryOpen] = useState(true);
   const [favorites, setFavorites] = useState<Favorites>(() => readFavorites());
   const [expandedFolderIds, setExpandedFolderIds] = useState<string[]>([]);
+  const [view, setView] = useState<WorkspaceView>('dashboard');
+  const [taskFilter, setTaskFilter] = useState<TaskFilter>('all');
+  const [ownerFilter, setOwnerFilter] = useState('');
+  const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [currentUser, setCurrentUser] = useState<UserInfo | null>(null);
+  const [templates, setTemplates] = useState<ProjectTemplate[]>([]);
+  const [selectedTemplatePath, setSelectedTemplatePath] = useState('');
+  const [dashboardSummaries, setDashboardSummaries] = useState<WorkbookSummary[]>([]);
+  const [loadingDashboard, setLoadingDashboard] = useState(false);
+  const [reportSent, setReportSent] = useState(false);
 
   const selectedFolder = useMemo(
     () => folders.find((folder) => folder.id === selectedFolderId) || null,
     [folders, selectedFolderId]
   );
+
+  const upsertSummary = (workbook: ProjectWorkbook) => {
+    const summary = summarizeWorkbook(workbook);
+    setDashboardSummaries((current) => [
+      summary,
+      ...current.filter((item) => item.file.id !== workbook.file.id),
+    ]);
+  };
 
   const loadProjects = async () => {
     setLoadingProjects(true);
@@ -178,6 +307,9 @@ export default function ProjectWorkspace() {
 
   useEffect(() => {
     loadProjects();
+    window.api.settings.get().then(setSettings).catch(() => undefined);
+    window.api.auth.getAccount().then(setCurrentUser).catch(() => undefined);
+    window.api.projects.listTemplates().then(setTemplates).catch(() => setTemplates([]));
   }, []);
 
   useEffect(() => {
@@ -191,8 +323,10 @@ export default function ProjectWorkspace() {
     try {
       const workbook = await window.api.projects.load(file);
       setSelected(workbook);
+      upsertSummary(workbook);
       setDirty(false);
       setLibraryOpen(false);
+      setView('table');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -226,8 +360,10 @@ export default function ProjectWorkspace() {
         folderName: selectedFolder.name,
         folderPath: selectedFolder.path,
         fileName: newWorkbookName.trim(),
+        templatePath: selectedTemplatePath || undefined,
       });
       setSelected(workbook);
+      upsertSummary(workbook);
       setDirty(false);
       setLibraryOpen(false);
       setNewWorkbookName('');
@@ -269,6 +405,30 @@ export default function ProjectWorkspace() {
     }
   };
 
+  const archiveFolder = async (folder: ProjectFolder) => {
+    if (folder.isRoot) {
+      setError('La cartella Root non puo essere archiviata dall\'app.');
+      return;
+    }
+    if (!confirm(`Archiviare la cartella "${folder.name}"? Verrà spostata nella cartella archivio SharePoint.`)) return;
+
+    setLoadingProjects(true);
+    setError(null);
+    try {
+      await window.api.projects.archiveFolder({ folder });
+      if (selected?.file.folderPath === folder.path) {
+        setSelected(null);
+        setDirty(false);
+      }
+      setDashboardSummaries((current) => current.filter((item) => item.file.folderPath !== folder.path));
+      await loadProjects();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoadingProjects(false);
+    }
+  };
+
   const deleteWorkbook = async (file: ProjectFile) => {
     if (!confirm(`Cancellare l'Excel "${file.name}"?`)) return;
     setLoadingProjects(true);
@@ -299,6 +459,7 @@ export default function ProjectWorkspace() {
         sheetName: selected.sheetName,
         format: selected.format,
         statuses: selected.statuses,
+        metadata: selected.metadata,
         tasks: tasksWithRollups
           .filter((task) => task.task.trim() || (children.get(task.id)?.length || 0) > 0)
           .map((task) => ({
@@ -307,6 +468,7 @@ export default function ProjectWorkspace() {
           })),
       });
       setSelected(saved);
+      upsertSummary(saved);
       setDirty(false);
       await loadProjects();
     } catch (err: unknown) {
@@ -392,6 +554,98 @@ export default function ProjectWorkspace() {
     );
   };
 
+  const refreshDashboard = async () => {
+    setLoadingDashboard(true);
+    setError(null);
+    try {
+      const summaries: WorkbookSummary[] = [];
+      const files = folders.flatMap((folder) => folder.files);
+      for (const file of files) {
+        const workbook = await window.api.projects.load(file);
+        summaries.push(summarizeWorkbook(workbook));
+      }
+      setDashboardSummaries(summaries);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoadingDashboard(false);
+    }
+  };
+
+  const updateLink = (label: string, url: string) => {
+    if (!selected) return;
+    const links = mergeDefaultLinks(selected.metadata?.links || []).map((link) =>
+      link.label === label ? { ...link, url } : link
+    );
+    setSelected({
+      ...selected,
+      metadata: { links },
+    });
+    setDirty(true);
+  };
+
+  const reportText = () => {
+    const summaries = dashboardSummaries.length > 0
+      ? dashboardSummaries
+      : selected
+        ? [summarizeWorkbook(selected)]
+        : [];
+    const totals = summaries.reduce(
+      (acc, item) => ({
+        projects: acc.projects + 1,
+        tasks: acc.tasks + item.total,
+        done: acc.done + item.done,
+        review: acc.review + item.review,
+        paused: acc.paused + item.paused,
+        overdue: acc.overdue + item.overdue,
+      }),
+      { projects: 0, tasks: 0, done: 0, review: 0, paused: 0, overdue: 0 }
+    );
+
+    const lines = [
+      `Report progetti tecnici - ${formatDateOnly(new Date().toISOString())}`,
+      '',
+      `Progetti: ${totals.projects}`,
+      `Task: ${totals.tasks} (${totals.done} conclusi, ${totals.review} da verificare, ${totals.paused} in pausa, ${totals.overdue} in ritardo)`,
+      '',
+      ...summaries
+        .sort((a, b) => b.overdue - a.overdue || b.review - a.review || a.folderName.localeCompare(b.folderName))
+        .map((item) =>
+          `- ${item.folderName} / ${item.file.name}: ${item.overall}, ${item.done}/${item.total} conclusi, ${item.review} da verificare, ${item.overdue} in ritardo`
+        ),
+    ];
+    return lines.join('\n');
+  };
+
+  const copyReport = async () => {
+    await navigator.clipboard.writeText(reportText());
+    setReportSent(true);
+    window.setTimeout(() => setReportSent(false), 2000);
+  };
+
+  const sendEmailReport = () => {
+    const recipient = settings?.defaults.notificationEmail || '';
+    const subject = encodeURIComponent('Report progetti tecnici');
+    const body = encodeURIComponent(reportText());
+    window.location.href = `mailto:${recipient}?subject=${subject}&body=${body}`;
+  };
+
+  const sendTeamsReport = async () => {
+    const webhook = settings?.defaults.teamsWebhookUrl?.trim();
+    if (!webhook) {
+      setError('Webhook Teams non configurato nelle Impostazioni.');
+      return;
+    }
+    setError(null);
+    await fetch(webhook, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: reportText().replace(/\n/g, '\n\n') }),
+    });
+    setReportSent(true);
+    window.setTimeout(() => setReportSent(false), 2000);
+  };
+
   const filteredFolders = useMemo(() => {
     const text = query.toLowerCase().trim();
     const visibleFolders = text
@@ -429,10 +683,46 @@ export default function ProjectWorkspace() {
 
   const childrenByParent = useMemo(() => buildChildrenMap(selected?.tasks || []), [selected]);
   const rolledTasks = useMemo(() => rollupParentTasks(selected?.tasks || []), [selected]);
+  const ownerOptions = useMemo(() => {
+    const configured = (settings?.defaults.owners || '')
+      .split(/[\n,;]/)
+      .map((owner) => owner.trim())
+      .filter(Boolean);
+    const fromTasks = rolledTasks.map((task) => task.owner || '').filter(Boolean);
+    return [...new Set([...configured, ...fromTasks])].sort((a, b) => a.localeCompare(b, 'it'));
+  }, [rolledTasks, settings]);
+
+  const filteredTasks = useMemo(() => {
+    return rolledTasks.filter((task) => {
+      if (ownerFilter && task.owner !== ownerFilter) return false;
+      if (taskFilter === 'mine' && !ownerMatches(task, currentUser)) return false;
+      if (taskFilter === 'review' && statusClassName(computeOverallStatus(task.backendStatus, task.frontendStatus)) !== 'review') return false;
+      if (taskFilter === 'paused' && statusClassName(computeOverallStatus(task.backendStatus, task.frontendStatus)) !== 'paused') return false;
+      if (taskFilter === 'overdue' && !isOverdue(task)) return false;
+      return true;
+    });
+  }, [currentUser, ownerFilter, rolledTasks, taskFilter]);
+
+  const dashboardTotals = useMemo(() => {
+    return dashboardSummaries.reduce(
+      (acc, item) => ({
+        projects: acc.projects + 1,
+        tasks: acc.tasks + item.total,
+        done: acc.done + item.done,
+        review: acc.review + item.review,
+        paused: acc.paused + item.paused,
+        overdue: acc.overdue + item.overdue,
+        estimate: acc.estimate + item.estimate,
+      }),
+      { projects: 0, tasks: 0, done: 0, review: 0, paused: 0, overdue: 0, estimate: 0 }
+    );
+  }, [dashboardSummaries]);
+
+  const projectLinks = useMemo(() => mergeDefaultLinks(selected?.metadata?.links || []), [selected]);
 
   const summary = useMemo(() => {
-    const tasks = rolledTasks;
-    const estimateTasks = rolledTasks.filter((task) => !task.parentId);
+    const tasks = filteredTasks;
+    const estimateTasks = filteredTasks.filter((task) => !task.parentId);
     const done = tasks.filter((task) => statusClassName(computeOverallStatus(task.backendStatus, task.frontendStatus)) === 'done').length;
     const active = tasks.filter((task) =>
       ['progress', 'review'].includes(statusClassName(computeOverallStatus(task.backendStatus, task.frontendStatus)))
@@ -442,7 +732,7 @@ export default function ProjectWorkspace() {
       return sum + estimate;
     }, 0);
     return { total: tasks.length, done, active, totalEstimate };
-  }, [rolledTasks]);
+  }, [filteredTasks]);
 
   return (
     <div className={`workspace-shell${selected && !libraryOpen ? ' library-hidden' : ''}`}>
@@ -497,9 +787,14 @@ export default function ProjectWorkspace() {
                   <Star size={15} />
                 </button>
                 {!folder.isRoot && (
-                  <button className="row-delete-btn" onClick={() => deleteFolder(folder)} title="Cancella cartella progetto">
-                    <Trash2 size={15} />
-                  </button>
+                  <>
+                    <button className="row-action-btn" onClick={() => archiveFolder(folder)} title="Archivia cartella progetto">
+                      <Archive size={15} />
+                    </button>
+                    <button className="row-delete-btn" onClick={() => deleteFolder(folder)} title="Cancella cartella progetto">
+                      <Trash2 size={15} />
+                    </button>
+                  </>
                 )}
               </div>
               {expandedFolderIds.includes(folder.id) && (
@@ -565,6 +860,19 @@ export default function ProjectWorkspace() {
             )}
           </div>
           <div className="new-workbook">
+            {templates.length > 0 && (
+              <select
+                value={selectedTemplatePath}
+                onChange={(event) => setSelectedTemplatePath(event.target.value)}
+                disabled={!selectedFolder}
+                title="Template Excel"
+              >
+                <option value="">Template predefinito</option>
+                {templates.map((template) => (
+                  <option key={template.path} value={template.path}>{template.name}</option>
+                ))}
+              </select>
+            )}
             <input
               value={newWorkbookName}
               onChange={(event) => setNewWorkbookName(event.target.value)}
@@ -580,7 +888,83 @@ export default function ProjectWorkspace() {
           </div>
         </div>
 
-        {!selected && !loadingWorkbook && (
+        <div className="workspace-tabs">
+          <button className={view === 'dashboard' ? 'active' : ''} onClick={() => setView('dashboard')}>
+            <LayoutDashboard size={16} /> Dashboard
+          </button>
+          <button className={view === 'table' ? 'active' : ''} onClick={() => setView('table')} disabled={!selected}>
+            <Table2 size={16} /> Tabella
+          </button>
+          <button className={view === 'kanban' ? 'active' : ''} onClick={() => setView('kanban')} disabled={!selected}>
+            <Columns3 size={16} /> Kanban
+          </button>
+          <button className={view === 'report' ? 'active' : ''} onClick={() => setView('report')}>
+            <FileText size={16} /> Report
+          </button>
+        </div>
+
+        {view === 'dashboard' && (
+          <div className="dashboard-view">
+            <div className="dashboard-header">
+              <div>
+                <p className="eyebrow">Portfolio tecnico</p>
+                <h2>Progetti in corso</h2>
+              </div>
+              <button className="btn btn-outline" onClick={refreshDashboard} disabled={loadingDashboard || folders.length === 0}>
+                {loadingDashboard ? <span className="spinner" /> : <BarChart3 size={16} />}
+                {loadingDashboard ? 'Analisi...' : 'Analizza Excel'}
+              </button>
+            </div>
+
+            <div className="metrics-row portfolio">
+              <div><span>{dashboardTotals.projects || folders.length}</span><small>Progetti/Excel</small></div>
+              <div><span>{dashboardTotals.tasks || '-'}</span><small>Task tracciati</small></div>
+              <div><span>{dashboardTotals.review || '-'}</span><small>Da verificare</small></div>
+              <div><span>{dashboardTotals.overdue || '-'}</span><small>In ritardo</small></div>
+            </div>
+
+            <div className="portfolio-grid">
+              {dashboardSummaries.map((item) => (
+                <button key={item.file.id} className="portfolio-item" onClick={() => openProject(item.file)}>
+                  <div>
+                    <strong>{item.folderName}</strong>
+                    <span>{item.file.name}</span>
+                  </div>
+                  <span className={`status-badge ${statusClassName(item.overall)}`}>{item.overall}</span>
+                  <div className="portfolio-stats">
+                    <small>{item.done}/{item.total} conclusi</small>
+                    <small>{item.review} verifica</small>
+                    <small>{item.overdue} ritardo</small>
+                    <small>{item.estimate || '-'} gg</small>
+                  </div>
+                </button>
+              ))}
+              {!loadingDashboard && dashboardSummaries.length === 0 && (
+                <div className="empty-list">Premi "Analizza Excel" per costruire la dashboard con task, ritardi e stati aggregati.</div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {view === 'report' && (
+          <div className="report-view">
+            <div className="dashboard-header">
+              <div>
+                <p className="eyebrow">Report settimanale</p>
+                <h2>Riepilogo condivisibile</h2>
+              </div>
+              <div className="detail-actions">
+                <button className="btn btn-outline" onClick={copyReport}><Clipboard size={16} /> Copia</button>
+                <button className="btn btn-outline" onClick={sendEmailReport}><Mail size={16} /> Email</button>
+                <button className="btn btn-outline" onClick={sendTeamsReport}><Send size={16} /> Teams</button>
+              </div>
+            </div>
+            {reportSent && <div className="alert">Report inviato o copiato negli appunti.</div>}
+            <pre className="report-box">{reportText()}</pre>
+          </div>
+        )}
+
+        {!selected && !loadingWorkbook && view !== 'dashboard' && view !== 'report' && (
           <div className="empty-workspace">
             <FileSpreadsheet size={42} />
             <h2>Apri un Excel della cartella</h2>
@@ -595,7 +979,7 @@ export default function ProjectWorkspace() {
           </div>
         )}
 
-        {selected && !loadingWorkbook && (
+        {selected && !loadingWorkbook && view !== 'dashboard' && view !== 'report' && (
           <>
             <div className="detail-header">
               <div>
@@ -626,6 +1010,54 @@ export default function ProjectWorkspace() {
               </div>
             </div>
 
+            <div className="project-links-panel">
+              {projectLinks.map((link) => (
+                <label key={link.label}>
+                  <span>{link.label}</span>
+                  <div>
+                    <Link size={14} />
+                    <input
+                      value={link.url}
+                      onChange={(event) => updateLink(link.label, event.target.value)}
+                      placeholder={`URL ${link.label.toLowerCase()}`}
+                    />
+                    {link.url && (
+                      <a className="icon-button" href={link.url} target="_blank" rel="noreferrer" title={`Apri ${link.label}`}>
+                        <ExternalLink size={15} />
+                      </a>
+                    )}
+                  </div>
+                </label>
+              ))}
+            </div>
+
+            <div className="task-filter-bar">
+              <div className="segmented-control">
+                <button className={taskFilter === 'all' ? 'active' : ''} onClick={() => setTaskFilter('all')}>
+                  <Filter size={15} /> Tutti
+                </button>
+                <button className={taskFilter === 'mine' ? 'active' : ''} onClick={() => setTaskFilter('mine')}>
+                  <Users size={15} /> Miei
+                </button>
+                <button className={taskFilter === 'review' ? 'active' : ''} onClick={() => setTaskFilter('review')}>
+                  <Bell size={15} /> Da verificare
+                </button>
+                <button className={taskFilter === 'paused' ? 'active' : ''} onClick={() => setTaskFilter('paused')}>
+                  <Archive size={15} /> In pausa
+                </button>
+                <button className={taskFilter === 'overdue' ? 'active' : ''} onClick={() => setTaskFilter('overdue')}>
+                  <CalendarDays size={15} /> In ritardo
+                </button>
+              </div>
+              <label>
+                <Users size={15} />
+                <select value={ownerFilter} onChange={(event) => setOwnerFilter(event.target.value)}>
+                  <option value="">Tutti gli owner</option>
+                  {ownerOptions.map((owner) => <option key={owner} value={owner}>{owner}</option>)}
+                </select>
+              </label>
+            </div>
+
             <div className="metrics-row">
               <div><span>{summary.total}</span><small>Task</small></div>
               <div><span>{summary.done}</span><small>Conclusi</small></div>
@@ -633,12 +1065,54 @@ export default function ProjectWorkspace() {
               <div><span>{summary.totalEstimate || '-'}</span><small>Giorni stimati</small></div>
             </div>
 
+            {view === 'kanban' && (
+              <div className="kanban-board">
+                {selected.statuses.map((status) => {
+                  const tasks = filteredTasks.filter((task) =>
+                    computeOverallStatus(task.backendStatus, task.frontendStatus) === status.name
+                  );
+                  return (
+                    <section key={status.name} className="kanban-column">
+                      <div className="kanban-column-header">
+                        <span className={`status-badge ${statusClassName(status.name)}`}>{status.name}</span>
+                        <small>{tasks.length}</small>
+                      </div>
+                      <div className="kanban-cards">
+                        {tasks.map((task) => (
+                          <article key={task.id} className={`kanban-card ${task.parentId ? 'child' : ''}`}>
+                            <div>
+                              <strong>{task.task || 'Task senza nome'}</strong>
+                              <small>{task.area || '-'}</small>
+                            </div>
+                            <div className="kanban-meta">
+                              {task.owner && <span><Users size={13} /> {task.owner}</span>}
+                              {task.priority && <span><Flag size={13} /> {task.priority}</span>}
+                              {task.dueDate && <span className={isOverdue(task) ? 'overdue-text' : ''}><CalendarDays size={13} /> {formatDateOnly(task.dueDate)}</span>}
+                            </div>
+                          </article>
+                        ))}
+                        {tasks.length === 0 && <div className="empty-list compact">Nessun task.</div>}
+                      </div>
+                    </section>
+                  );
+                })}
+              </div>
+            )}
+
+            {view === 'table' && (
+            <>
             <div className="task-table-wrap">
+              <datalist id="project-owner-options">
+                {ownerOptions.map((owner) => <option key={owner} value={owner} />)}
+              </datalist>
               <table className="task-table">
                 <thead>
                   <tr>
                     <th>Ambito</th>
                     <th>Task</th>
+                    <th>Owner</th>
+                    <th>Priorità</th>
+                    <th>Scadenza</th>
                     <th>Backend</th>
                     <th className="estimate-col">Stima (gg)</th>
                     <th>Frontend</th>
@@ -649,7 +1123,7 @@ export default function ProjectWorkspace() {
                   </tr>
                 </thead>
                 <tbody>
-                  {selected.tasks.map((task) => {
+                  {filteredTasks.map((task) => {
                     const childTasks = childrenByParent.get(task.id) || [];
                     const hasChildren = childTasks.length > 0;
                     const displayTask = rollupTask(task, childTasks);
@@ -670,6 +1144,31 @@ export default function ProjectWorkspace() {
                           />
                         </div>
                         {hasChildren && <small className="computed-hint">Stato e stime calcolati dai sotto-task</small>}
+                      </td>
+                      <td>
+                        <input
+                          list="project-owner-options"
+                          value={task.owner || ''}
+                          onChange={(event) => updateTask(task.id, { owner: event.target.value })}
+                          placeholder="Owner"
+                        />
+                      </td>
+                      <td>
+                        <select
+                          value={task.priority || 'Media'}
+                          className={`priority-select ${(task.priority || 'Media').toLowerCase()}`}
+                          onChange={(event) => updateTask(task.id, { priority: event.target.value })}
+                        >
+                          {PRIORITIES.map((priority) => <option key={priority} value={priority}>{priority}</option>)}
+                        </select>
+                      </td>
+                      <td>
+                        <input
+                          type="date"
+                          value={task.dueDate || ''}
+                          onChange={(event) => updateTask(task.id, { dueDate: event.target.value })}
+                          className={isOverdue(task) ? 'overdue-input' : ''}
+                        />
                       </td>
                       <td>
                         <select
@@ -748,6 +1247,8 @@ export default function ProjectWorkspace() {
             <div className="table-footer">
               <button className="btn btn-outline" onClick={addTask}><Plus size={16} /> Aggiungi task</button>
             </div>
+            </>
+            )}
           </>
         )}
       </section>

@@ -8,10 +8,15 @@ const defaults: AppSettings = {
     sitePath: '/sites/Clienti-Documentazionetecnicainterna',
     rootPath: '/SorgeProjects',
     templatePath: '',
+    templateFolderPath: '',
+    archiveFolderName: '_Archivio',
   },
   defaults: {
     initialRows: 40,
     projectNamePrefix: '',
+    owners: '',
+    notificationEmail: '',
+    teamsWebhookUrl: '',
   },
 };
 

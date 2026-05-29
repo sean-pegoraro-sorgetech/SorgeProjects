@@ -1,4 +1,4 @@
-import type { ProjectFile, ProjectFolder, SharePointConfig } from '../../renderer/types/project';
+import type { ProjectFile, ProjectFolder, ProjectTemplate, SharePointConfig } from '../../renderer/types/project';
 import { getAccessToken } from '../auth/auth-service';
 
 const GRAPH_ROOT = 'https://graph.microsoft.com/v1.0';
@@ -120,7 +120,8 @@ export async function listProjectFolders(config: SharePointConfig): Promise<Proj
     .filter((item) => item.file && item.name.toLowerCase().endsWith('.xlsx') && !item.name.startsWith('~$'))
     .map((item) => toProjectFile(item, 'Root', config.rootPath || '/'));
 
-  const folders = (response.value || []).filter((item) => item.folder);
+  const archiveFolderName = (config.archiveFolderName || '_Archivio').toLowerCase();
+  const folders = (response.value || []).filter((item) => item.folder && item.name.toLowerCase() !== archiveFolderName);
   const projectFolders = await Promise.all(
     folders.map(async (folder) => {
       const folderPath = `${config.rootPath || '/'}/${folder.name}`;
@@ -143,6 +144,30 @@ export async function listProjectFolders(config: SharePointConfig): Promise<Proj
     ...(rootFolder ? [rootFolder] : []),
     ...projectFolders.sort((a, b) => a.name.localeCompare(b.name)),
   ];
+}
+
+export async function listWorkbookTemplates(config: SharePointConfig): Promise<ProjectTemplate[]> {
+  const templateFolderPath = config.templateFolderPath?.trim();
+  if (!templateFolderPath) return [];
+
+  const files = await listExcelFilesInPath(config, templateFolderPath);
+  return files.map((file) => ({
+    name: file.name.replace(/\.xlsx$/i, ''),
+    path: `${templateFolderPath.replace(/\/+$/g, '')}/${file.name}`,
+  }));
+}
+
+export async function getProjectFileMetadata(
+  config: SharePointConfig,
+  itemId: string,
+  folderName?: string,
+  folderPath?: string
+): Promise<ProjectFile> {
+  const basePath = getDriveBasePath(config);
+  const item = await graphJson<DriveItemResponse>(
+    `${basePath}/items/${itemId}?$select=id,name,webUrl,lastModifiedDateTime,size,file`
+  );
+  return toProjectFile(item, folderName, folderPath);
 }
 
 export async function downloadProjectFile(config: SharePointConfig, itemId: string): Promise<Buffer> {
@@ -210,6 +235,37 @@ export async function createProjectFolder(config: SharePointConfig, folderName: 
     }),
   });
   return toProjectFolder(folder, `${config.rootPath || '/'}/${folderName}`, []);
+}
+
+async function ensureArchiveFolder(config: SharePointConfig): Promise<ProjectFolder> {
+  const basePath = getDriveBasePath(config);
+  const rootPath = encodeDrivePath(config.rootPath || '/');
+  const archiveFolderName = sanitizeFolderName(config.archiveFolderName || '_Archivio');
+  const response = await graphJson<{ value: DriveItemResponse[] }>(
+    `${basePath}/root:/${rootPath}:/children?$select=id,name,webUrl,lastModifiedDateTime,folder&$orderby=name`
+  );
+
+  const existing = (response.value || []).find(
+    (item) => item.folder && item.name.toLowerCase() === archiveFolderName.toLowerCase()
+  );
+  if (existing) {
+    return toProjectFolder(existing, `${config.rootPath || '/'}/${existing.name}`, []);
+  }
+
+  return createProjectFolder(config, archiveFolderName);
+}
+
+export async function archiveProjectFolder(config: SharePointConfig, folder: ProjectFolder): Promise<void> {
+  const destination = await ensureArchiveFolder(config);
+  const basePath = getDriveBasePath(config);
+  await graphJson<DriveItemResponse>(`${basePath}/items/${folder.id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      parentReference: {
+        id: destination.id,
+      },
+    }),
+  });
 }
 
 export async function resolveSiteDriveId(siteHostname: string, sitePath: string): Promise<string> {

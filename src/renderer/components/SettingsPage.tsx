@@ -177,6 +177,22 @@ export default function SettingsPage() {
               placeholder="/Template/template_piano_lavori_frontend.xlsx"
             />
           </div>
+          <div className="form-group">
+            <label>Cartella template</label>
+            <input
+              value={settings.sharepoint.templateFolderPath || ''}
+              onChange={(event) => updateSharePoint('templateFolderPath', event.target.value)}
+              placeholder="/Template"
+            />
+          </div>
+          <div className="form-group">
+            <label>Cartella archivio</label>
+            <input
+              value={settings.sharepoint.archiveFolderName || '_Archivio'}
+              onChange={(event) => updateSharePoint('archiveFolderName', event.target.value)}
+              placeholder="_Archivio"
+            />
+          </div>
         </div>
       </section>
 
@@ -201,6 +217,30 @@ export default function SettingsPage() {
               max={500}
               value={settings.defaults.initialRows}
               onChange={(event) => updateDefaults('initialRows', Number(event.target.value))}
+            />
+          </div>
+          <div className="form-group full-width">
+            <label>Owner ricorrenti</label>
+            <textarea
+              value={settings.defaults.owners || ''}
+              onChange={(event) => updateDefaults('owners', event.target.value)}
+              placeholder="Uno per riga o separati da virgola"
+            />
+          </div>
+          <div className="form-group">
+            <label>Email report</label>
+            <input
+              value={settings.defaults.notificationEmail || ''}
+              onChange={(event) => updateDefaults('notificationEmail', event.target.value)}
+              placeholder="team@sorgetech.it"
+            />
+          </div>
+          <div className="form-group">
+            <label>Webhook Teams</label>
+            <input
+              value={settings.defaults.teamsWebhookUrl || ''}
+              onChange={(event) => updateDefaults('teamsWebhookUrl', event.target.value)}
+              placeholder="URL Incoming Webhook"
             />
           </div>
         </div>

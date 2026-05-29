@@ -6,6 +6,8 @@ export interface SharePointConfig {
   driveId?: string;
   rootPath: string;
   templatePath?: string;
+  templateFolderPath?: string;
+  archiveFolderName?: string;
 }
 
 export interface AppSettings {
@@ -13,6 +15,9 @@ export interface AppSettings {
   defaults: {
     initialRows: number;
     projectNamePrefix: string;
+    owners?: string;
+    notificationEmail?: string;
+    teamsWebhookUrl?: string;
   };
 }
 
@@ -51,6 +56,9 @@ export interface ProjectTask {
   phase?: string;
   area: string;
   task: string;
+  owner?: string;
+  priority?: 'Bassa' | 'Media' | 'Alta' | 'Critica' | string;
+  dueDate?: string;
   backendStatus: string;
   backendEstimateDays?: number | null;
   frontendStatus: string;
@@ -61,12 +69,27 @@ export interface ProjectTask {
   note2?: string;
 }
 
+export interface ProjectLink {
+  label: string;
+  url: string;
+}
+
+export interface ProjectMetadata {
+  links: ProjectLink[];
+}
+
+export interface ProjectTemplate {
+  name: string;
+  path: string;
+}
+
 export interface ProjectWorkbook {
   file: ProjectFile;
   sheetName: string;
   format: WorkbookFormat;
   statuses: StatusOption[];
   tasks: ProjectTask[];
+  metadata: ProjectMetadata;
   loadedAt: string;
 }
 
@@ -76,6 +99,7 @@ export interface ProjectSaveInput {
   format: WorkbookFormat;
   statuses: StatusOption[];
   tasks: ProjectTask[];
+  metadata?: ProjectMetadata;
 }
 
 export interface NewProjectInput {
@@ -91,6 +115,7 @@ export interface NewWorkbookInput {
   folderName: string;
   folderPath: string;
   fileName: string;
+  templatePath?: string;
   tasks?: ProjectTask[];
 }
 
@@ -100,6 +125,10 @@ export interface DeleteFolderInput {
 
 export interface DeleteWorkbookInput {
   file: ProjectFile;
+}
+
+export interface ArchiveFolderInput {
+  folder: ProjectFolder;
 }
 
 export interface ElectronAPI {
@@ -117,6 +146,8 @@ export interface ElectronAPI {
     createWorkbook(input: NewWorkbookInput): Promise<ProjectWorkbook>;
     deleteFolder(input: DeleteFolderInput): Promise<void>;
     deleteWorkbook(input: DeleteWorkbookInput): Promise<void>;
+    archiveFolder(input: ArchiveFolderInput): Promise<void>;
+    listTemplates(): Promise<ProjectTemplate[]>;
   };
   settings: {
     get(): Promise<AppSettings>;

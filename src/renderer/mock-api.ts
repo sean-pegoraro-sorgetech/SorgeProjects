@@ -74,6 +74,11 @@ function workbook(file: ProjectFile): ProjectWorkbook {
     sheetName: 'Piano lavori',
     format: 'piano-lavori',
     statuses,
+    metadata: {
+      links: [
+        { label: 'Repository', url: 'https://github.com/sean-pegoraro-sorgetech/SorgeProjects' },
+      ],
+    },
     loadedAt: new Date().toISOString(),
     tasks: [
       {
@@ -81,6 +86,9 @@ function workbook(file: ProjectFile): ProjectWorkbook {
         rowNumber: 5,
         area: 'Settings',
         task: 'Gestione permessi utente',
+        owner: 'Sean',
+        priority: 'Alta',
+        dueDate: new Date(Date.now() + 86400000).toISOString().slice(0, 10),
         backendStatus: 'Da verificare',
         backendEstimateDays: 1.5,
         frontendStatus: 'Work in progress',
@@ -95,6 +103,9 @@ function workbook(file: ProjectFile): ProjectWorkbook {
         rowNumber: 6,
         area: 'Calendario',
         task: 'Schedulazione con calendario organico',
+        owner: 'Daniele',
+        priority: 'Media',
+        dueDate: '',
         backendStatus: 'Concluso',
         backendEstimateDays: 1,
         frontendStatus: 'Concluso',
@@ -178,6 +189,13 @@ export function installMockApi(): void {
           }
         }
       },
+      archiveFolder: async (input) => {
+        const index = folders.findIndex((folder) => folder.id === input.folder.id);
+        if (index >= 0) folders.splice(index, 1);
+      },
+      listTemplates: async () => [
+        { name: 'Piano lavori frontend', path: '/Template/template_piano_lavori_frontend.xlsx' },
+      ],
     },
     settings: {
       get: async () => ({
@@ -185,10 +203,15 @@ export function installMockApi(): void {
           mode: 'site',
           rootPath: '/Progetti',
           templatePath: '/Template/template_piano_lavori_frontend.xlsx',
+          templateFolderPath: '/Template',
+          archiveFolderName: '_Archivio',
         },
         defaults: {
           initialRows: 40,
           projectNamePrefix: '',
+          owners: 'Sean\nDaniele',
+          notificationEmail: '',
+          teamsWebhookUrl: '',
         },
       }),
       set: async () => undefined,
