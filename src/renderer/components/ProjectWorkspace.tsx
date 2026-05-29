@@ -606,19 +606,6 @@ export default function ProjectWorkspace() {
     setDirty(true);
   };
 
-  const setSelectedOwnerAsMine = async () => {
-    if (!settings || !ownerFilter) return;
-    const updated = {
-      ...settings,
-      defaults: {
-        ...settings.defaults,
-        myOwner: ownerFilter,
-      },
-    };
-    setSettings(updated);
-    await window.api.settings.set({ defaults: updated.defaults });
-  };
-
   const reportText = () => {
     const summaries = dashboardSummaries.length > 0
       ? dashboardSummaries
@@ -1097,9 +1084,6 @@ export default function ProjectWorkspace() {
                   {ownerOptions.map((owner) => <option key={owner} value={owner}>{owner}</option>)}
                 </select>
               </label>
-              <button className="btn btn-outline btn-sm" onClick={setSelectedOwnerAsMine} disabled={!ownerFilter}>
-                <Users size={14} /> Questo sono io
-              </button>
               {settings?.defaults.myOwner && <span className="owner-self-pill">Mio owner: {settings.defaults.myOwner}</span>}
             </div>
 
