@@ -28,6 +28,7 @@ import {
   Star,
   Table2,
   Trash2,
+  Undo2,
   Users,
 } from 'lucide-react';
 import type {
@@ -202,9 +203,15 @@ function mergeDefaultLinks(links: ProjectLink[]): ProjectLink[] {
   return [...defaults, ...custom];
 }
 
-function ownerMatches(task: ProjectTask, user: UserInfo | null): boolean {
+function cloneWorkbook(workbook: ProjectWorkbook): ProjectWorkbook {
+  return JSON.parse(JSON.stringify(workbook)) as ProjectWorkbook;
+}
+
+function ownerMatches(task: ProjectTask, user: UserInfo | null, myOwner?: string): boolean {
   if (!user || !task.owner) return false;
   const owner = task.owner.toLowerCase();
+  const configured = (myOwner || '').trim().toLowerCase();
+  if (configured && (owner === configured || owner.includes(configured))) return true;
   return owner.includes(user.email.toLowerCase()) || owner.includes((user.name || '').toLowerCase());
 }
 
@@ -248,6 +255,7 @@ export default function ProjectWorkspace() {
   const [query, setQuery] = useState('');
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [selected, setSelected] = useState<ProjectWorkbook | null>(null);
+  const [savedSnapshot, setSavedSnapshot] = useState<ProjectWorkbook | null>(null);
   const [loadingProjects, setLoadingProjects] = useState(false);
   const [loadingWorkbook, setLoadingWorkbook] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -322,7 +330,8 @@ export default function ProjectWorkspace() {
     setError(null);
     try {
       const workbook = await window.api.projects.load(file);
-      setSelected(workbook);
+      setSelected(cloneWorkbook(workbook));
+      setSavedSnapshot(cloneWorkbook(workbook));
       upsertSummary(workbook);
       setDirty(false);
       setLibraryOpen(false);
@@ -362,7 +371,8 @@ export default function ProjectWorkspace() {
         fileName: newWorkbookName.trim(),
         templatePath: selectedTemplatePath || undefined,
       });
-      setSelected(workbook);
+      setSelected(cloneWorkbook(workbook));
+      setSavedSnapshot(cloneWorkbook(workbook));
       upsertSummary(workbook);
       setDirty(false);
       setLibraryOpen(false);
@@ -393,6 +403,7 @@ export default function ProjectWorkspace() {
       await window.api.projects.deleteFolder({ folder });
       if (selected?.file.folderPath === folder.path) {
         setSelected(null);
+        setSavedSnapshot(null);
         setDirty(false);
       }
       if (selectedFolderId === folder.id) setSelectedFolderId(null);
@@ -418,6 +429,7 @@ export default function ProjectWorkspace() {
       await window.api.projects.archiveFolder({ folder });
       if (selected?.file.folderPath === folder.path) {
         setSelected(null);
+        setSavedSnapshot(null);
         setDirty(false);
       }
       setDashboardSummaries((current) => current.filter((item) => item.file.folderPath !== folder.path));
@@ -437,6 +449,7 @@ export default function ProjectWorkspace() {
       await window.api.projects.deleteWorkbook({ file });
       if (selected?.file.id === file.id) {
         setSelected(null);
+        setSavedSnapshot(null);
         setDirty(false);
       }
       await loadProjects();
@@ -467,7 +480,8 @@ export default function ProjectWorkspace() {
             overallStatus: computeOverallStatus(task.backendStatus, task.frontendStatus),
           })),
       });
-      setSelected(saved);
+      setSelected(cloneWorkbook(saved));
+      setSavedSnapshot(cloneWorkbook(saved));
       upsertSummary(saved);
       setDirty(false);
       await loadProjects();
@@ -476,6 +490,14 @@ export default function ProjectWorkspace() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const discardChanges = () => {
+    if (!savedSnapshot) return;
+    if (!confirm('Annullare tutte le modifiche non salvate e tornare all\'ultima versione caricata?')) return;
+    setSelected(cloneWorkbook(savedSnapshot));
+    setDirty(false);
+    setError(null);
   };
 
   const updateTask = (id: string, patch: Partial<ProjectTask>) => {
@@ -584,6 +606,19 @@ export default function ProjectWorkspace() {
     setDirty(true);
   };
 
+  const setSelectedOwnerAsMine = async () => {
+    if (!settings || !ownerFilter) return;
+    const updated = {
+      ...settings,
+      defaults: {
+        ...settings.defaults,
+        myOwner: ownerFilter,
+      },
+    };
+    setSettings(updated);
+    await window.api.settings.set({ defaults: updated.defaults });
+  };
+
   const reportText = () => {
     const summaries = dashboardSummaries.length > 0
       ? dashboardSummaries
@@ -689,19 +724,20 @@ export default function ProjectWorkspace() {
       .map((owner) => owner.trim())
       .filter(Boolean);
     const fromTasks = rolledTasks.map((task) => task.owner || '').filter(Boolean);
-    return [...new Set([...configured, ...fromTasks])].sort((a, b) => a.localeCompare(b, 'it'));
+    const myOwner = settings?.defaults.myOwner ? [settings.defaults.myOwner] : [];
+    return [...new Set([...myOwner, ...configured, ...fromTasks])].sort((a, b) => a.localeCompare(b, 'it'));
   }, [rolledTasks, settings]);
 
   const filteredTasks = useMemo(() => {
     return rolledTasks.filter((task) => {
       if (ownerFilter && task.owner !== ownerFilter) return false;
-      if (taskFilter === 'mine' && !ownerMatches(task, currentUser)) return false;
+      if (taskFilter === 'mine' && !ownerMatches(task, currentUser, settings?.defaults.myOwner)) return false;
       if (taskFilter === 'review' && statusClassName(computeOverallStatus(task.backendStatus, task.frontendStatus)) !== 'review') return false;
       if (taskFilter === 'paused' && statusClassName(computeOverallStatus(task.backendStatus, task.frontendStatus)) !== 'paused') return false;
       if (taskFilter === 'overdue' && !isOverdue(task)) return false;
       return true;
     });
-  }, [currentUser, ownerFilter, rolledTasks, taskFilter]);
+  }, [currentUser, ownerFilter, rolledTasks, settings, taskFilter]);
 
   const dashboardTotals = useMemo(() => {
     return dashboardSummaries.reduce(
@@ -1001,10 +1037,15 @@ export default function ProjectWorkspace() {
                   </a>
                 )}
                 {dirty && (
-                  <button className="btn btn-primary" onClick={saveProject} disabled={saving}>
-                    {saving ? <span className="spinner" /> : <Save size={16} />}
-                    {saving ? 'Salvataggio...' : 'Salva'}
-                  </button>
+                  <>
+                    <button className="btn btn-outline" onClick={discardChanges} disabled={saving}>
+                      <Undo2 size={16} /> Annulla
+                    </button>
+                    <button className="btn btn-primary" onClick={saveProject} disabled={saving}>
+                      {saving ? <span className="spinner" /> : <Save size={16} />}
+                      {saving ? 'Salvataggio...' : 'Salva'}
+                    </button>
+                  </>
                 )}
                 {!dirty && <span className="sync-pill">Sincronizzato</span>}
               </div>
@@ -1056,6 +1097,10 @@ export default function ProjectWorkspace() {
                   {ownerOptions.map((owner) => <option key={owner} value={owner}>{owner}</option>)}
                 </select>
               </label>
+              <button className="btn btn-outline btn-sm" onClick={setSelectedOwnerAsMine} disabled={!ownerFilter}>
+                <Users size={14} /> Questo sono io
+              </button>
+              {settings?.defaults.myOwner && <span className="owner-self-pill">Mio owner: {settings.defaults.myOwner}</span>}
             </div>
 
             <div className="metrics-row">

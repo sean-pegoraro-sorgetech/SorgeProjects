@@ -16,6 +16,7 @@ export interface AppSettings {
     initialRows: number;
     projectNamePrefix: string;
     owners?: string;
+    myOwner?: string;
     notificationEmail?: string;
     teamsWebhookUrl?: string;
   };

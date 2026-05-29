@@ -210,6 +210,7 @@ export function installMockApi(): void {
           initialRows: 40,
           projectNamePrefix: '',
           owners: 'Sean\nDaniele',
+          myOwner: 'Sean',
           notificationEmail: '',
           teamsWebhookUrl: '',
         },

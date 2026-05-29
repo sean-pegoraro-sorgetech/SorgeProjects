@@ -15,6 +15,7 @@ const defaults: AppSettings = {
     initialRows: 40,
     projectNamePrefix: '',
     owners: '',
+    myOwner: '',
     notificationEmail: '',
     teamsWebhookUrl: '',
   },

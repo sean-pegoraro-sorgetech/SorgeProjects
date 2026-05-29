@@ -852,6 +852,18 @@ h2 {
   padding: 0 10px;
 }
 
+.owner-self-pill {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid color-mix(in oklch, var(--primary) 45%, var(--border));
+  border-radius: var(--radius);
+  color: var(--text-soft);
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .report-box {
   min-height: 340px;
   margin: 0;

@@ -228,6 +228,14 @@ export default function SettingsPage() {
             />
           </div>
           <div className="form-group">
+            <label>Il mio owner</label>
+            <input
+              value={settings.defaults.myOwner || ''}
+              onChange={(event) => updateDefaults('myOwner', event.target.value)}
+              placeholder="es. Sean"
+            />
+          </div>
+          <div className="form-group">
             <label>Email report</label>
             <input
               value={settings.defaults.notificationEmail || ''}
