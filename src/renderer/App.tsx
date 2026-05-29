@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import Sidebar from './components/Sidebar';
 import SettingsPage from './components/SettingsPage';
 import ProjectWorkspace from './components/ProjectWorkspace';
-import { applyTheme, getThemePreference } from './theme';
+import { applyDensity, applyTheme, getDensityPreference, getThemePreference } from './theme';
 
 type Page = 'projects' | 'settings';
 
@@ -19,6 +19,7 @@ export default function App() {
 
   useEffect(() => {
     applyTheme(getThemePreference());
+    applyDensity(getDensityPreference());
     window.api.auth.getAccount().then((account) => {
       setUser(account);
       setLoading(false);
@@ -83,7 +84,7 @@ export default function App() {
           <div className="main-content-inner narrow">
             <div className="page-header">
               <div>
-                <p className="eyebrow">Configurazione</p>
+                <p className="eyebrow">Preferenze locali</p>
                 <h1>Impostazioni</h1>
               </div>
             </div>

@@ -57,6 +57,115 @@
   --success: oklch(75% 0.16 145);
 }
 
+:root[data-theme='graphite'] {
+  --bg: oklch(13% 0.004 255);
+  --surface: oklch(18% 0.004 255);
+  --surface-2: oklch(23% 0.005 255);
+  --surface-3: oklch(29% 0.006 255);
+  --text: oklch(93% 0.004 255);
+  --text-muted: oklch(70% 0.008 255);
+  --text-soft: oklch(80% 0.006 255);
+  --border: oklch(34% 0.006 255);
+  --primary: oklch(70% 0.13 70);
+  --primary-hover: oklch(76% 0.14 70);
+}
+
+:root[data-theme='amber'] {
+  --bg: oklch(96% 0.01 98);
+  --surface: oklch(99% 0.005 98);
+  --surface-2: oklch(93% 0.018 98);
+  --surface-3: oklch(88% 0.026 98);
+  --text: oklch(21% 0.018 70);
+  --text-muted: oklch(47% 0.03 78);
+  --text-soft: oklch(32% 0.024 75);
+  --border: oklch(80% 0.032 92);
+  --primary: oklch(62% 0.16 78);
+  --primary-hover: oklch(55% 0.16 78);
+  --warning: oklch(66% 0.17 68);
+}
+
+:root[data-theme='burgundy'] {
+  --bg: oklch(14% 0.024 352);
+  --surface: oklch(19% 0.028 352);
+  --surface-2: oklch(24% 0.034 352);
+  --surface-3: oklch(30% 0.04 352);
+  --text: oklch(94% 0.008 352);
+  --text-muted: oklch(72% 0.024 12);
+  --text-soft: oklch(82% 0.016 12);
+  --border: oklch(35% 0.048 352);
+  --primary: oklch(69% 0.16 28);
+  --primary-hover: oklch(74% 0.16 28);
+  --success: oklch(72% 0.14 155);
+}
+
+:root[data-theme='highContrast'] {
+  --bg: oklch(8% 0 0);
+  --surface: oklch(12% 0 0);
+  --surface-2: oklch(18% 0 0);
+  --surface-3: oklch(26% 0 0);
+  --text: oklch(99% 0 0);
+  --text-muted: oklch(78% 0 0);
+  --text-soft: oklch(90% 0 0);
+  --border: oklch(52% 0 0);
+  --primary: oklch(78% 0.18 215);
+  --primary-hover: oklch(84% 0.18 215);
+  --danger: oklch(72% 0.22 28);
+  --success: oklch(82% 0.18 148);
+  --warning: oklch(86% 0.18 82);
+}
+
+:root[data-density='compact'] body {
+  font-size: 13px;
+}
+
+:root[data-density='compact'] .btn {
+  min-height: 34px;
+  padding: 8px 11px;
+}
+
+:root[data-density='compact'] .btn-sm {
+  min-height: 29px;
+  padding: 6px 9px;
+}
+
+:root[data-density='compact'] .search-box,
+:root[data-density='compact'] .new-project input,
+:root[data-density='compact'] .form-group input,
+:root[data-density='compact'] .form-group select {
+  height: 34px;
+}
+
+:root[data-density='compact'] .form-group textarea {
+  min-height: 72px;
+  padding: 8px 10px;
+}
+
+:root[data-density='compact'] .form-section {
+  padding: 16px;
+}
+
+:root[data-density='compact'] .task-table th {
+  padding: 8px;
+}
+
+:root[data-density='compact'] .task-table td {
+  padding: 6px;
+}
+
+:root[data-density='compact'] .task-table input,
+:root[data-density='compact'] .task-table select,
+:root[data-density='compact'] .task-table textarea {
+  min-height: 32px;
+  padding: 6px 7px;
+}
+
+:root[data-density='compact'] .task-table textarea,
+:root[data-density='compact'] .task-name-cell textarea,
+:root[data-density='compact'] .note-cell textarea {
+  height: 32px;
+  min-height: 32px;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -1341,6 +1450,49 @@ h2 {
   margin-top: 6px;
 }
 
+.personalization-section {
+  background:
+    linear-gradient(135deg, color-mix(in oklch, var(--primary) 10%, transparent), transparent 42%),
+    var(--surface);
+}
+
+.settings-block {
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+  margin-top: 16px;
+}
+
+.settings-block:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+  margin-top: 0;
+}
+
+.settings-block-title {
+  margin-bottom: 10px;
+}
+
+.settings-block-title.with-icon {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+}
+
+.settings-block-title.with-icon > svg {
+  color: var(--primary);
+  margin-top: 1px;
+}
+
+.settings-block-title h3 {
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.settings-block-title p {
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1414,6 +1566,52 @@ h2 {
   font-size: 13px;
 }
 
+.advanced-settings {
+  margin-bottom: 16px;
+}
+
+.advanced-settings summary {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.advanced-settings summary::-webkit-details-marker {
+  display: none;
+}
+
+.advanced-settings summary > svg {
+  color: var(--primary);
+  flex: 0 0 auto;
+}
+
+.advanced-settings summary div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.advanced-settings summary span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.advanced-settings[open] summary {
+  margin-bottom: 16px;
+  border-color: color-mix(in oklch, var(--primary) 52%, var(--border));
+}
+
+.advanced-section {
+  margin-left: 14px;
+}
+
 .theme-options {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -1462,6 +1660,53 @@ h2 {
 
 .theme-option.forest .theme-swatch {
   background: linear-gradient(135deg, oklch(19% 0.022 160) 0 50%, oklch(68% 0.15 155) 50% 100%);
+}
+
+.theme-option.graphite .theme-swatch {
+  background: linear-gradient(135deg, oklch(18% 0.004 255) 0 50%, oklch(70% 0.13 70) 50% 100%);
+}
+
+.theme-option.amber .theme-swatch {
+  background: linear-gradient(135deg, oklch(99% 0.005 98) 0 50%, oklch(62% 0.16 78) 50% 100%);
+}
+
+.theme-option.burgundy .theme-swatch {
+  background: linear-gradient(135deg, oklch(19% 0.028 352) 0 50%, oklch(69% 0.16 28) 50% 100%);
+}
+
+.theme-option.highContrast .theme-swatch {
+  background: linear-gradient(135deg, oklch(8% 0 0) 0 50%, oklch(78% 0.18 215) 50% 100%);
+}
+
+.density-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.density-option {
+  min-height: 72px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  padding: 12px;
+  text-align: left;
+}
+
+.density-option span {
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
+.density-option:hover,
+.density-option.active {
+  border-color: color-mix(in oklch, var(--primary) 60%, var(--border));
+  background: color-mix(in oklch, var(--primary) 14%, var(--surface-2));
 }
 
 .spinner {
@@ -1539,6 +1784,14 @@ h2 {
 
   .form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .density-options {
+    grid-template-columns: 1fr;
+  }
+
+  .advanced-section {
+    margin-left: 0;
   }
 
   .detail-header {
